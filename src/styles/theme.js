@@ -1,0 +1,27 @@
+export const theme = {
+  colors: {
+    background: "var(--color-bg)",
+    foreground: "var(--color-fg)",
+    primary: "var(--color-primary)",
+    primaryForeground: "var(--color-primary-fg)",
+    accent: "var(--color-accent)",
+    accentForeground: "var(--color-accent-fg)",
+    muted: "var(--color-muted)",
+    mutedForeground: "var(--color-muted-fg)",
+    border: "var(--color-border)",
+    card: "var(--color-card)",
+    sidebar: "var(--color-sidebar)",
+    sidebarForeground: "var(--color-sidebar-fg)",
+    sidebarBorder: "var(--color-sidebar-border)",
+    destructive: "var(--color-destructive)",
+    destructiveForeground: "var(--color-destructive-fg)",
+    success: "var(--color-success)",
+    warning: "var(--color-warning)",
+  },
+  radius: "var(--radius)",
+  shadow: {
+    sm: "var(--shadow-sm)",
+    md: "var(--shadow-md)",
+    lg: "var(--shadow-lg)",
+  },
+};
