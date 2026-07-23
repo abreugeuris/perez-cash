@@ -9,7 +9,7 @@ import {
   ArrowRightLeft,
   X,
 } from "lucide-react";
-import { ratesController } from "@/backend/controllers/ratesController";
+import { ratesController } from "@/backend/controllers/rates.controller";
 import {
   PageWrapper,
   PageTitle,

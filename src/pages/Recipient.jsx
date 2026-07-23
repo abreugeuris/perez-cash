@@ -11,7 +11,7 @@ import {
   Flag,
   X,
 } from "lucide-react";
-import { recipientsController } from "@/backend/controllers/recipientsController";
+import { recipientsController } from "@/backend/controllers/recipients.controller";
 import {
   PageWrapper,
   PageTitle,

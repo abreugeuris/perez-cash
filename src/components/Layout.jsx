@@ -2,7 +2,14 @@ import { useState, useCallback } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import TopHeader from "@/components/TopHeader";
-import { Home, Users, History, DollarSign, PlusCircle } from "lucide-react";
+import {
+  Home,
+  Users,
+  History,
+  DollarSign,
+  PlusCircle,
+  UserCheck,
+} from "lucide-react";
 import {
   LayoutWrap,
   MainContent,

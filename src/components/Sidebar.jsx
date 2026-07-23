@@ -22,6 +22,8 @@ import {
   UserInfo,
   Avatar,
 } from "@/components/styles/sidebarStyled";
+import { logoutUser } from "@/store/slices/authSlice";
+import { useDispatch } from "react-redux";
 
 const NAV_ITEMS = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -33,14 +35,14 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar({ collapsed, onToggle }) {
-
+  const dispatch = useDispatch();
   const navigate = useNavigate();
 
   const doLogout = () => {
-    signOut();
+    dispatch(logoutUser());
     navigate("/auth/login");
   };
-  const user ={ nombre: "John", apellido: "Doe", rol: "admin" };
+  const user = { nombre: "John", apellido: "Doe", rol: "admin" };
 
   const initials = user
     ? `${user.nombre?.[0] || ""}${user.apellido?.[0] || ""}`

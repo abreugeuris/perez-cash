@@ -38,11 +38,11 @@ export const BrandBlock = styled.div`
     margin: 0;
     font-size: 1.5rem;
     font-weight: 700;
-    color: #1a3b8c;
+    color: var(--color-primary);
   }
 
   .accent {
-    color: #f47b34;
+    color: var(--color-accent);
   }
 
   p {

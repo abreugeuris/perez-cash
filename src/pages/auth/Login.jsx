@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   CardHeader,
@@ -18,31 +20,32 @@ import {
   ErrorMsg,
   HintBox,
 } from "./styles/loginStyled";
+import { loginUser, clearAuthError } from "@/store/slices/authSlice";
 
 export default function Login() {
-
+  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { status, error, user } = useSelector((state) => state.auth);
 
-  const from = location.state?.from || "/dashboard";
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm({
+    defaultValues: { email: "", password: "" },
+  });
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    if (!email.trim() || !password.trim()) {
-      setError("Complete todos los campos.");
-      return;
+  const onSubmit = async ({ email, password }) => {
+    dispatch(clearAuthError());
+    const result = await dispatch(loginUser({ email, password }));
+
+    if (loginUser.fulfilled.match(result)) {
+      navigate("/dashboard"); // ajusta a tu ruta real del Dashboard
     }
-    setLoading(true);
-    const ok = await login(email.trim(), password);
-    setLoading(false);
-    if (ok) navigate(from, { replace: true });
-    else setError("Credenciales inválidas. Verifique su email y contraseña.");
+    // si falla, el error ya queda disponible en state.auth.error
   };
+
+  const isLoading = status === "loading";
 
   return (
     <Wrapper>
@@ -57,35 +60,41 @@ export default function Login() {
           </BrandBlock>
         </CardHeader>
         <CardBody>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit(onSubmit)}>
             <FormGroup>
-              <Label>Email</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
+                id="email"
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@remesaflow.com"
                 autoComplete="email"
+                {...register("email", { required: "El email es obligatorio" })}
               />
+              {errors.email && <ErrorMsg>{errors.email.message}</ErrorMsg>}
             </FormGroup>
             <FormGroup>
-              <Label>Contraseña</Label>
+              <Label htmlFor="password">Contraseña</Label>
               <Input
+                id="password"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••"
                 autoComplete="current-password"
+                {...register("password", {
+                  required: "La contraseña es obligatoria",
+                })}
               />
+              {errors.password && (
+                <ErrorMsg>{errors.password.message}</ErrorMsg>
+              )}
             </FormGroup>
             {error && <ErrorMsg>{error}</ErrorMsg>}
             <Button
               type="submit"
               $fullWidth
-              disabled={loading}
+              disabled={isLoading}
               style={{ marginTop: "0.75rem" }}
             >
-              {loading ? "Ingresando..." : "Iniciar Sesión"}
+              {isLoading ? "Ingresando..." : "Iniciar Sesión"}
             </Button>
           </form>
 

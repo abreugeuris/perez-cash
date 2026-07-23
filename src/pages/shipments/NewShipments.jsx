@@ -17,8 +17,8 @@ import {
 import { toast } from "sonner";
 import { shipmentsController } from "@/backend/controllers/shipmentsController";
 import { sendersController } from "@/backend/controllers/sendersController";
-import { recipientsController } from "@/backend/controllers/recipientsController";
-import { ratesController } from "@/backend/controllers/ratesController";
+import { recipientsController } from "@/backend/controllers/recipients.controller";
+import { ratesController } from "@/backend/controllers/rates.controller";
 import {
   PageWrapper,
   PageTitle,
