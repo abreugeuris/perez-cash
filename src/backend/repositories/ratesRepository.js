@@ -9,11 +9,11 @@ export const ratesRepository = {
 
   async create(payload) {
     const { data, error } = await supabase.rpc("create_rate", {
-      p_name: payload.name,
-      p_phone: payload.phone,
-      p_id_document: payload.idDocument ?? null,
-      p_address: payload.address ?? null,
-      p_notes: payload.notes ?? null,
+      p_from_currency: payload.fromCurrency,
+      p_to_currency: payload.toCurrency,
+      p_rate: payload.rate,
+      p_description: payload.description ?? "",
+      p_active: payload.active ?? true,
     });
     if (error) throw error;
     return data?.[0] ?? null;
@@ -22,11 +22,19 @@ export const ratesRepository = {
   async update(id, payload) {
     const { data, error } = await supabase.rpc("update_rate", {
       p_id: id,
-      p_name: payload.name,
-      p_phone: payload.phone,
-      p_id_document: payload.idDocument ?? null,
-      p_address: payload.address ?? null,
-      p_notes: payload.notes ?? null,
+      p_from_currency: payload.fromCurrency,
+      p_to_currency: payload.toCurrency,
+      p_rate: payload.rate,
+      p_description: payload.description ?? "",
+      p_active: payload.active ?? true,
+    });
+    if (error) throw error;
+    return data?.[0] ?? null;
+  },
+
+  async toggleActive(id) {
+    const { data, error } = await supabase.rpc("toggle_rate_active", {
+      p_id: id,
     });
     if (error) throw error;
     return data?.[0] ?? null;

@@ -1,7 +1,9 @@
+import { ratesService } from '../services/Rates.service'
 
 export const ratesController = {
- getAll: () => sendersService.getAll(),
-   create: (payload) => sendersService.create(payload),
-   update: (id, payload) => sendersService.update(id, payload),
-   delete: (id) => sendersService.delete(id)
-};
+  getAll:       ()            => ratesService.getAll(),
+  create:       (payload)     => ratesService.create(payload),
+  update:       (id, payload) => ratesService.update(id, payload),
+  toggleActive: (id)          => ratesService.toggleActive(id),
+  delete:       (id)          => ratesService.delete(id),
+}

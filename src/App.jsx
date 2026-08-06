@@ -1,20 +1,20 @@
 import { useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import Layout from './components/layout';
-import TooltipProvider from './components/TooltipProvider';
+import Layout from './components/Layout.jsx';
+import TooltipProvider from './components/TooltipProvider.jsx';
 import { Toaster } from 'sonner';
-import Login from './pages/auth/Login';
-import Recovery from './pages/auth/Recovery';
-import Register from './pages/auth/Regiter';
-import Beneficiaries  from './pages/Beneficiaries';
-import Dashboard from './pages/Dashboard';
-import Senders from './pages/Senders';
+import Login from './pages/auth/Login.jsx';
+import Recovery from './pages/auth/Recovery.jsx';
+import Register from './pages/auth/Regiter.jsx';
+import Beneficiaries  from './pages/Beneficiaries.jsx';
+import Dashboard from './pages/Dashboard.jsx';
+import Senders from './pages/Senders.jsx';
 import Rates from './pages/Rates.jsx';
 import ShipmentsHistory from './pages/shipments/ShipmentsHistory.jsx';
 import NewShipment from './pages/shipments/NewShipments.jsx';
-import ProtectedRoute from './components/ProtectedRoute';
-import { restoreSession, watchSession } from './store/slices/authSlice';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
+import { restoreSession, watchSession } from './store/slices/authSlice.js';
 
 export default function App() {
   const dispatch = useDispatch();
