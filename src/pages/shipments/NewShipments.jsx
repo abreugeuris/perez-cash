@@ -1,6 +1,9 @@
-import { useState, useMemo, useCallback } from "react";
+import { useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
+import { useDispatch, useSelector } from "react-redux";
+import { toast } from "sonner";
+import { Send, UserPlus } from "lucide-react";
 import {
   TwoCol,
   RightCol,
@@ -14,11 +17,6 @@ import {
   StepBadge,
   FormGroup,
 } from "./styles/newShipmentsStyle.js";
-import { toast } from "sonner";
-// import { shipmentsController } from "@/backend/controllers/shipmentsController";
-// import { sendersController } from "@/backend/controllers/sendersController";
-// import { recipientsController } from "@/backend/controllers/recipients.controller";
-// import { ratesController } from "@/backend/controllers/rates.controller";
 import {
   PageWrapper,
   PageTitle,
@@ -35,41 +33,52 @@ import {
   Grid,
   Divider,
 } from "@/styles/components";
+import { fetchSenders, createSender } from "@/store/slices/sendersSlice";
 import {
-  Send,
-  UserPlus,
-  ChevronDown,
-  ArrowRightLeft,
-  Calculator,
-} from "lucide-react";
+  fetchBeneficiaries,
+  createBeneficiary,
+} from "@/store/slices/beneficiariesSlice";
+import { fetchRates } from "@/store/slices/ratesSlice";
+import { createTransfer } from "@/store/slices/transfersSlice";
 
-function formatCurrency(amount) {
-  return `RD$ ${amount.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const PAYMENT_METHODS = [
+  "Efectivo",
+  "Transferencia bancaria",
+  "Billetera móvil",
+];
+
+function formatAmount(amount, currency) {
+  return `${amount.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
-
-function formatHtg(amount) {
-  return `${amount.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} HTG`;
-}
-
-const METODOS_PAGO = ["Efectivo", "Transferencia bancaria", "Billetera móvil"];
 
 export default function NewShipment() {
+  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const [remitentes, setRemitentes] = useState(() =>
-    sendersController.listar(),
-  );
-  const [beneficiarios, setBeneficiarios] = useState(() =>
-    recipientsController.getAll(),
-  );
-  const [tasas, setTasas] = useState(() => ratesController.listar());
-  const tasasActivas = useMemo(() => tasas.filter((t) => t.activa), [tasas]);
 
-  const defaultTasaId = useMemo(
+  const { items: senders, status: sendersStatus } = useSelector(
+    (s) => s.senders,
+  );
+  const { items: beneficiaries, status: beneficiariesStatus } = useSelector(
+    (s) => s.beneficiaries,
+  );
+  const { items: rates, status: ratesStatus } = useSelector((s) => s.rates);
+  const { saving } = useSelector((s) => s.transfers);
+
+  const activeRates = useMemo(() => rates.filter((r) => r.active), [rates]);
+
+  // Cargar catálogos solo si aún no están en Redux
+  useEffect(() => {
+    if (sendersStatus === "idle") dispatch(fetchSenders());
+    if (beneficiariesStatus === "idle") dispatch(fetchBeneficiaries());
+    if (ratesStatus === "idle") dispatch(fetchRates());
+  }, [dispatch, sendersStatus, beneficiariesStatus, ratesStatus]);
+
+  const defaultRateId = useMemo(
     () =>
-      tasasActivas.find((t) => t.monedaOrigen === "DOP")?.id ??
-      tasasActivas[0]?.id ??
+      activeRates.find((r) => r.from_currency === "DOP")?.id ??
+      activeRates[0]?.id ??
       "",
-    [tasasActivas],
+    [activeRates],
   );
 
   const {
@@ -78,175 +87,192 @@ export default function NewShipment() {
     watch,
     setValue,
     setError,
-    resetField,
     formState: { errors, isSubmitting },
   } = useForm({
     defaultValues: {
-      remitenteMode: "select",
-      remitenteId: "",
-      remitenteNombre: "",
-      remitenteApellido: "",
-      remitenteTelefono: "",
-      remitenteCedula: "",
-      remitenteDireccion: "",
-      beneficiarioMode: "select",
-      beneficiarioId: "",
-      beneficiarioNombre: "",
-      beneficiarioApellido: "",
-      beneficiarioTelefono: "",
-      beneficiarioPais: "Haití",
-      beneficiarioDireccion: "",
-      metodoPago: "",
-      tasaId: defaultTasaId,
-      cantidadEnviar: "",
+      senderMode: "select",
+      senderId: "",
+      senderName: "",
+      senderPhone: "",
+      senderIdDocument: "",
+      senderAddress: "",
+      beneficiaryMode: "select",
+      beneficiaryId: "",
+      beneficiaryName: "",
+      beneficiaryPhone: "",
+      beneficiaryCountry: "Haití",
+      beneficiaryNotes: "",
+      paymentMethod: "",
+      rateId: defaultRateId,
+      amountSent: "",
     },
   });
 
-  const remitenteMode = watch("remitenteMode");
-  const beneficiarioMode = watch("beneficiarioMode");
-  const selectedRemitenteId = watch("remitenteId");
-  const selectedBeneficiarioId = watch("beneficiarioId");
-  const selectedTasaId = watch("tasaId");
-  const cantidadEnviar = watch("cantidadEnviar");
+  const senderMode = watch("senderMode");
+  const beneficiaryMode = watch("beneficiaryMode");
+  const selectedSenderId = watch("senderId");
+  const selectedBeneficiaryId = watch("beneficiaryId");
+  const selectedRateId = watch("rateId");
+  const amountSent = watch("amountSent");
+  const paymentMethod = watch("paymentMethod");
 
-  const selectedRemitente = useMemo(
-    () => remitentes.find((r) => r.id === selectedRemitenteId) ?? null,
-    [remitentes, selectedRemitenteId],
+  const selectedSender = useMemo(
+    () => senders.find((s) => s.id === selectedSenderId) ?? null,
+    [senders, selectedSenderId],
   );
-  const selectedBeneficiario = useMemo(
-    () => beneficiarios.find((b) => b.id === selectedBeneficiarioId) ?? null,
-    [beneficiarios, selectedBeneficiarioId],
+  const selectedBeneficiary = useMemo(
+    () => beneficiaries.find((b) => b.id === selectedBeneficiaryId) ?? null,
+    [beneficiaries, selectedBeneficiaryId],
   );
-  const selectedTasa = useMemo(
-    () => tasas.find((t) => t.id === selectedTasaId) ?? null,
-    [tasas, selectedTasaId],
+  const selectedRate = useMemo(
+    () => activeRates.find((r) => r.id === selectedRateId) ?? null,
+    [activeRates, selectedRateId],
   );
 
-  const montoRecibido = useMemo(() => {
-    const cant = parseFloat(cantidadEnviar);
-    if (!cant || cant <= 0 || !selectedTasa) return 0;
-    return cant * selectedTasa.valor;
-  }, [cantidadEnviar, selectedTasa]);
+  const amountReceived = useMemo(() => {
+    const amt = parseFloat(amountSent);
+    if (!amt || amt <= 0 || !selectedRate) return 0;
+    return amt * selectedRate.rate;
+  }, [amountSent, selectedRate]);
 
-  const switchRemitenteMode = (mode) => {
-    setValue("remitenteMode", mode);
+  const switchSenderMode = (mode) => {
+    setValue("senderMode", mode);
     if (mode === "select") {
-      resetField("remitenteNombre");
-      resetField("remitenteApellido");
-      resetField("remitenteTelefono");
-      resetField("remitenteCedula");
-      resetField("remitenteDireccion");
+      setValue("senderName", "");
+      setValue("senderPhone", "");
+      setValue("senderIdDocument", "");
+      setValue("senderAddress", "");
     } else {
-      setValue("remitenteId", "");
+      setValue("senderId", "");
     }
   };
 
-  const switchBeneficiarioMode = (mode) => {
-    setValue("beneficiarioMode", mode);
+  const switchBeneficiaryMode = (mode) => {
+    setValue("beneficiaryMode", mode);
     if (mode === "select") {
-      resetField("beneficiarioNombre");
-      resetField("beneficiarioApellido");
-      resetField("beneficiarioTelefono");
-      resetField("beneficiarioDireccion");
+      setValue("beneficiaryName", "");
+      setValue("beneficiaryPhone", "");
+      setValue("beneficiaryCountry", "Haití");
+      setValue("beneficiaryNotes", "");
     } else {
-      setValue("beneficiarioId", "");
+      setValue("beneficiaryId", "");
     }
   };
 
-  // const onSubmit = async (data) => {
-  //   // Validate manually
-  //   if (data.remitenteMode === "select" && !data.remitenteId) {
-  //     setError("remitenteId", { message: "Seleccione un remitente existente" });
-  //     return;
-  //   }
-  //   if (data.remitenteMode === "create") {
-  //     if (!data.remitenteNombre?.trim()) {
-  //       setError("remitenteNombre", { message: "Requerido" });
-  //       return;
-  //     }
-  //     if (!data.remitenteApellido?.trim()) {
-  //       setError("remitenteApellido", { message: "Requerido" });
-  //       return;
-  //     }
-  //     if (!data.remitenteTelefono?.trim()) {
-  //       setError("remitenteTelefono", { message: "Requerido" });
-  //       return;
-  //     }
-  //     if (!data.remitenteCedula?.trim()) {
-  //       setError("remitenteCedula", { message: "Requerido" });
-  //       return;
-  //     }
-  //   }
-  //   if (data.beneficiarioMode === "select" && !data.beneficiarioId) {
-  //     setError("beneficiarioId", {
-  //       message: "Seleccione un beneficiario existente",
-  //     });
-  //     return;
-  //   }
-  //   if (data.beneficiarioMode === "create") {
-  //     if (!data.beneficiarioNombre?.trim()) {
-  //       setError("beneficiarioNombre", { message: "Requerido" });
-  //       return;
-  //     }
-  //     if (!data.beneficiarioApellido?.trim()) {
-  //       setError("beneficiarioApellido", { message: "Requerido" });
-  //       return;
-  //     }
-  //     if (!data.beneficiarioTelefono?.trim()) {
-  //       setError("beneficiarioTelefono", { message: "Requerido" });
-  //       return;
-  //     }
-  //   }
-  //   if (!data.metodoPago) {
-  //     setError("metodoPago", { message: "Seleccione un método de pago" });
-  //     return;
-  //   }
-  //   if (!data.tasaId) {
-  //     setError("tasaId", { message: "Seleccione una tasa" });
-  //     return;
-  //   }
-  //   const cantVal = parseFloat(data.cantidadEnviar);
-  //   if (!cantVal || cantVal <= 0) {
-  //     setError("cantidadEnviar", { message: "Ingrese un monto válido" });
-  //     return;
-  //   }
+  const onSubmit = async (data) => {
+    // ── Validaciones manuales (equivalentes a las reglas de Senders/Recipient) ──
+    if (data.senderMode === "select" && !data.senderId) {
+      setError("senderId", { message: "Seleccione un remitente existente" });
+      return;
+    }
+    if (data.senderMode === "create") {
+      if (!data.senderName?.trim())
+        return setError("senderName", { message: "Requerido" });
+      if (!data.senderPhone?.trim() || data.senderPhone.trim().length < 6)
+        return setError("senderPhone", { message: "Teléfono inválido" });
+      if (
+        !data.senderIdDocument?.trim() ||
+        data.senderIdDocument.trim().length < 6
+      )
+        return setError("senderIdDocument", { message: "Cédula inválida" });
+    }
+    if (data.beneficiaryMode === "select" && !data.beneficiaryId) {
+      setError("beneficiaryId", {
+        message: "Seleccione un beneficiario existente",
+      });
+      return;
+    }
+    if (data.beneficiaryMode === "create") {
+      if (!data.beneficiaryName?.trim())
+        return setError("beneficiaryName", { message: "Requerido" });
+      if (
+        !data.beneficiaryPhone?.trim() ||
+        data.beneficiaryPhone.trim().length < 6
+      )
+        return setError("beneficiaryPhone", { message: "Teléfono inválido" });
+      if (!data.beneficiaryCountry?.trim())
+        return setError("beneficiaryCountry", { message: "Requerido" });
+    }
+    if (!data.paymentMethod) {
+      setError("paymentMethod", { message: "Seleccione un método de pago" });
+      return;
+    }
+    if (!data.rateId) {
+      setError("rateId", { message: "Seleccione una tasa" });
+      return;
+    }
+    const amountVal = parseFloat(data.amountSent);
+    if (!amountVal || amountVal <= 0) {
+      setError("amountSent", { message: "Ingrese un monto válido" });
+      return;
+    }
 
-  //   try {
-  //     const result = shipmentsController.crear({
-  //       remitente:
-  //         data.remitenteMode === "create"
-  //           ? {
-  //               nombre: data.remitenteNombre.trim(),
-  //               apellido: data.remitenteApellido.trim(),
-  //               telefono: data.remitenteTelefono.trim(),
-  //               cedula: data.remitenteCedula.trim(),
-  //               direccion: (data.remitenteDireccion || "").trim(),
-  //             }
-  //           : { telefono: selectedRemitente?.telefono },
-  //       beneficiario:
-  //         data.beneficiarioMode === "create"
-  //           ? {
-  //               nombre: data.beneficiarioNombre.trim(),
-  //               apellido: data.beneficiarioApellido.trim(),
-  //               telefono: data.beneficiarioTelefono.trim(),
-  //               pais: (data.beneficiarioPais || "Haití").trim(),
-  //               direccion: (data.beneficiarioDireccion || "").trim(),
-  //             }
-  //           : { telefono: selectedBeneficiario?.telefono },
-  //       tasaId: data.tasaId,
-  //       montoEnviado: cantVal,
-  //       metodoPago: data.metodoPago,
-  //       estado: "pendiente",
-  //       fecha: new Date().toISOString(),
-  //     });
+    try {
+      // 1. Resolver sender_id — crear primero si es "Nuevo"
+      let senderId = data.senderId;
+      if (data.senderMode === "create") {
+        const result = await dispatch(
+          createSender({
+            name: data.senderName.trim(),
+            phone: data.senderPhone.trim(),
+            idDocument: data.senderIdDocument.trim(),
+            address: (data.senderAddress || "").trim(),
+          }),
+        );
+        if (!createSender.fulfilled.match(result)) {
+          toast.error(result.payload?.message ?? "Error al crear el remitente");
+          return;
+        }
+        senderId = result.payload.id;
+        // El select de "Remitentes" ya se actualizó solo, porque
+        // createSender.fulfilled empuja el nuevo registro a state.senders.items.
+      }
 
-  //     if (result?.id) {
-  //       navigate(`/envios/${result.id}/recibo`);
-  //     }
-  //   } catch (_) {
-  //     // Error already shown by controller
-  //   }
-  // };
+      // 2. Resolver beneficiary_id — igual que arriba
+      let beneficiaryId = data.beneficiaryId;
+      if (data.beneficiaryMode === "create") {
+        const result = await dispatch(
+          createBeneficiary({
+            name: data.beneficiaryName.trim(),
+            phone: data.beneficiaryPhone.trim(),
+            country: (data.beneficiaryCountry || "Haití").trim(),
+            notes: (data.beneficiaryNotes || "").trim(),
+          }),
+        );
+        if (!createBeneficiary.fulfilled.match(result)) {
+          toast.error(
+            result.payload?.message ?? "Error al crear el beneficiario",
+          );
+          return;
+        }
+        beneficiaryId = result.payload.id;
+      }
+
+      // 3. Crear el envío referenciando ambos ids
+      const transferResult = await dispatch(
+        createTransfer({
+          senderId,
+          beneficiaryId,
+          fromCurrency: selectedRate.from_currency,
+          toCurrency: selectedRate.to_currency,
+          amountSent: amountVal,
+          appliedRate: selectedRate.rate,
+          paymentMethod: data.paymentMethod,
+        }),
+      );
+
+      if (createTransfer.fulfilled.match(transferResult)) {
+        toast.success("Envío registrado correctamente");
+        navigate(`/envios/${transferResult.payload.id}/recibo`);
+      } else {
+        toast.error(
+          transferResult.payload?.message ?? "Error al registrar el envío",
+        );
+      }
+    } catch (err) {
+      toast.error("Ocurrió un error inesperado");
+    }
+  };
 
   return (
     <PageWrapper>
@@ -271,64 +297,61 @@ export default function NewShipment() {
             <CardBody>
               <ModeToggle>
                 <ModeBtn
-                  $active={remitenteMode === "select"}
-                  onClick={() => switchRemitenteMode("select")}
+                  $active={senderMode === "select"}
+                  type="button"
+                  onClick={() => switchSenderMode("select")}
                 >
                   Seleccionar existente
                 </ModeBtn>
                 <ModeBtn
-                  $active={remitenteMode === "create"}
-                  onClick={() => switchRemitenteMode("create")}
+                  $active={senderMode === "create"}
+                  type="button"
+                  onClick={() => switchSenderMode("create")}
                 >
                   <UserPlus size={12} /> Nuevo
                 </ModeBtn>
               </ModeToggle>
 
-              {remitenteMode === "select" ? (
+              {senderMode === "select" ? (
                 <>
                   <FormGroup>
                     <Label>Remitente</Label>
                     <Select
-                      value={selectedRemitenteId}
-                      onChange={(e) => setValue("remitenteId", e.target.value)}
+                      value={selectedSenderId}
+                      onChange={(e) => setValue("senderId", e.target.value)}
                     >
                       <option value="">— Seleccione un remitente —</option>
-                      {remitentes.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.nombre} {r.apellido} — {r.telefono}
+                      {senders.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} — {s.phone}
                         </option>
                       ))}
                     </Select>
-                    {errors.remitenteId && (
-                      <FieldError>{errors.remitenteId.message}</FieldError>
+                    {errors.senderId && (
+                      <FieldError>{errors.senderId.message}</FieldError>
                     )}
                   </FormGroup>
-                  {selectedRemitente && (
+                  {selectedSender && (
                     <SelectedInfo>
                       <p>
                         <span className="label">Nombre: </span>
-                        <span className="value">
-                          {selectedRemitente.nombre}{" "}
-                          {selectedRemitente.apellido}
-                        </span>
+                        <span className="value">{selectedSender.name}</span>
                       </p>
                       <p>
                         <span className="label">Teléfono: </span>
-                        <span className="value">
-                          {selectedRemitente.telefono}
-                        </span>
+                        <span className="value">{selectedSender.phone}</span>
                       </p>
                       <p>
                         <span className="label">Cédula: </span>
                         <span className="value">
-                          {selectedRemitente.cedula}
+                          {selectedSender.id_document}
                         </span>
                       </p>
-                      {selectedRemitente.direccion && (
+                      {selectedSender.address && (
                         <p>
                           <span className="label">Dirección: </span>
                           <span className="value">
-                            {selectedRemitente.direccion}
+                            {selectedSender.address}
                           </span>
                         </p>
                       )}
@@ -337,58 +360,40 @@ export default function NewShipment() {
                 </>
               ) : (
                 <>
-                  <Grid $cols={2} $gap="0.6rem">
-                    <FormGroup>
-                      <Label>Nombre *</Label>
-                      <Input
-                        {...register("remitenteNombre")}
-                        placeholder="Ej: José"
-                      />
-                      {errors.remitenteNombre && (
-                        <FieldError>
-                          {errors.remitenteNombre.message}
-                        </FieldError>
-                      )}
-                    </FormGroup>
-                    <FormGroup>
-                      <Label>Apellido *</Label>
-                      <Input
-                        {...register("remitenteApellido")}
-                        placeholder="Ej: Pérez"
-                      />
-                      {errors.remitenteApellido && (
-                        <FieldError>
-                          {errors.remitenteApellido.message}
-                        </FieldError>
-                      )}
-                    </FormGroup>
-                  </Grid>
+                  <FormGroup>
+                    <Label>Nombre completo *</Label>
+                    <Input
+                      {...register("senderName")}
+                      placeholder="Ej: José Pérez"
+                    />
+                    {errors.senderName && (
+                      <FieldError>{errors.senderName.message}</FieldError>
+                    )}
+                  </FormGroup>
                   <FormGroup>
                     <Label>Teléfono *</Label>
                     <Input
-                      {...register("remitenteTelefono")}
+                      {...register("senderPhone")}
                       placeholder="+1 (809) 555-0101"
                     />
-                    {errors.remitenteTelefono && (
-                      <FieldError>
-                        {errors.remitenteTelefono.message}
-                      </FieldError>
+                    {errors.senderPhone && (
+                      <FieldError>{errors.senderPhone.message}</FieldError>
                     )}
                   </FormGroup>
                   <FormGroup>
                     <Label>Cédula / Pasaporte *</Label>
                     <Input
-                      {...register("remitenteCedula")}
+                      {...register("senderIdDocument")}
                       placeholder="402-1234567-8"
                     />
-                    {errors.remitenteCedula && (
-                      <FieldError>{errors.remitenteCedula.message}</FieldError>
+                    {errors.senderIdDocument && (
+                      <FieldError>{errors.senderIdDocument.message}</FieldError>
                     )}
                   </FormGroup>
                   <FormGroup>
                     <Label>Dirección</Label>
                     <Input
-                      {...register("remitenteDireccion")}
+                      {...register("senderAddress")}
                       placeholder="Calle, número, ciudad"
                     />
                   </FormGroup>
@@ -399,7 +404,6 @@ export default function NewShipment() {
 
           {/* ═══ RIGHT: Beneficiario + Montos ═══ */}
           <RightCol>
-            {/* Beneficiario */}
             <Card>
               <CardHeader>
                 <CardTitle>
@@ -412,59 +416,60 @@ export default function NewShipment() {
               <CardBody>
                 <ModeToggle>
                   <ModeBtn
-                    $active={beneficiarioMode === "select"}
-                    onClick={() => switchBeneficiarioMode("select")}
+                    $active={beneficiaryMode === "select"}
+                    type="button"
+                    onClick={() => switchBeneficiaryMode("select")}
                   >
                     Seleccionar existente
                   </ModeBtn>
                   <ModeBtn
-                    $active={beneficiarioMode === "create"}
-                    onClick={() => switchBeneficiarioMode("create")}
+                    $active={beneficiaryMode === "create"}
+                    type="button"
+                    onClick={() => switchBeneficiaryMode("create")}
                   >
                     <UserPlus size={12} /> Nuevo
                   </ModeBtn>
                 </ModeToggle>
 
-                {beneficiarioMode === "select" ? (
+                {beneficiaryMode === "select" ? (
                   <>
                     <FormGroup>
                       <Label>Beneficiario</Label>
                       <Select
-                        value={selectedBeneficiarioId}
+                        value={selectedBeneficiaryId}
                         onChange={(e) =>
-                          setValue("beneficiarioId", e.target.value)
+                          setValue("beneficiaryId", e.target.value)
                         }
                       >
                         <option value="">— Seleccione un beneficiario —</option>
-                        {beneficiarios.map((b) => (
+                        {beneficiaries.map((b) => (
                           <option key={b.id} value={b.id}>
-                            {b.nombre} {b.apellido} — {b.telefono} ({b.pais})
+                            {b.name} — {b.phone} ({b.country})
                           </option>
                         ))}
                       </Select>
-                      {errors.beneficiarioId && (
-                        <FieldError>{errors.beneficiarioId.message}</FieldError>
+                      {errors.beneficiaryId && (
+                        <FieldError>{errors.beneficiaryId.message}</FieldError>
                       )}
                     </FormGroup>
-                    {selectedBeneficiario && (
+                    {selectedBeneficiary && (
                       <SelectedInfo>
                         <p>
                           <span className="label">Nombre: </span>
                           <span className="value">
-                            {selectedBeneficiario.nombre}{" "}
-                            {selectedBeneficiario.apellido}
+                            {selectedBeneficiary.name}
                           </span>
                         </p>
                         <p>
                           <span className="label">Teléfono: </span>
                           <span className="value">
-                            {selectedBeneficiario.telefono}
+                            {selectedBeneficiary.phone}
                           </span>
                         </p>
                         <p>
                           <span className="label">País: </span>
                           <span className="value">
-                            {selectedBeneficiario.pais}
+                            {selectedBeneficiary.country}
                           </span>
                         </p>
                       </SelectedInfo>
@@ -472,57 +477,48 @@ export default function NewShipment() {
                   </>
                 ) : (
                   <>
-                    <Grid $cols={2} $gap="0.6rem">
-                      <FormGroup>
-                        <Label>Nombre *</Label>
-                        <Input
-                          {...register("beneficiarioNombre")}
-                          placeholder="Ej: Jean"
-                        />
-                        {errors.beneficiarioNombre && (
-                          <FieldError>
-                            {errors.beneficiarioNombre.message}
-                          </FieldError>
-                        )}
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>Apellido *</Label>
-                        <Input
-                          {...register("beneficiarioApellido")}
-                          placeholder="Ej: Baptiste"
-                        />
-                        {errors.beneficiarioApellido && (
-                          <FieldError>
-                            {errors.beneficiarioApellido.message}
-                          </FieldError>
-                        )}
-                      </FormGroup>
-                    </Grid>
+                    <FormGroup>
+                      <Label>Nombre completo *</Label>
+                      <Input
+                        {...register("beneficiaryName")}
+                        placeholder="Ej: Jean Baptiste"
+                      />
+                      {errors.beneficiaryName && (
+                        <FieldError>
+                          {errors.beneficiaryName.message}
+                        </FieldError>
+                      )}
+                    </FormGroup>
                     <FormGroup>
                       <Label>Teléfono *</Label>
                       <Input
-                        {...register("beneficiarioTelefono")}
+                        {...register("beneficiaryPhone")}
                         placeholder="+509 4444-1100"
                       />
-                      {errors.beneficiarioTelefono && (
+                      {errors.beneficiaryPhone && (
                         <FieldError>
-                          {errors.beneficiarioTelefono.message}
+                          {errors.beneficiaryPhone.message}
                         </FieldError>
                       )}
                     </FormGroup>
                     <Grid $cols={2} $gap="0.6rem">
                       <FormGroup>
-                        <Label>País</Label>
+                        <Label>País *</Label>
                         <Input
-                          {...register("beneficiarioPais")}
+                          {...register("beneficiaryCountry")}
                           placeholder="Haití"
                         />
+                        {errors.beneficiaryCountry && (
+                          <FieldError>
+                            {errors.beneficiaryCountry.message}
+                          </FieldError>
+                        )}
                       </FormGroup>
                       <FormGroup>
-                        <Label>Dirección</Label>
+                        <Label>Notas</Label>
                         <Input
-                          {...register("beneficiarioDireccion")}
-                          placeholder="Rue du Centre #12"
+                          {...register("beneficiaryNotes")}
+                          placeholder="Dirección u observaciones"
                         />
                       </FormGroup>
                     </Grid>
@@ -531,7 +527,6 @@ export default function NewShipment() {
               </CardBody>
             </Card>
 
-            {/* Montos */}
             <Card>
               <CardHeader>
                 <CardTitle>
@@ -545,19 +540,19 @@ export default function NewShipment() {
                 <FormGroup>
                   <Label>Tasa de Cambio *</Label>
                   <Select
-                    value={selectedTasaId}
-                    onChange={(e) => setValue("tasaId", e.target.value)}
+                    value={selectedRateId}
+                    onChange={(e) => setValue("rateId", e.target.value)}
                   >
                     <option value="">— Seleccione una tasa —</option>
-                    {tasasActivas.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        1 {t.monedaOrigen} = {t.valor.toFixed(2)}{" "}
-                        {t.monedaDestino} — {t.descripcion}
+                    {activeRates.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        1 {r.from_currency} = {r.rate.toFixed(2)}{" "}
+                        {r.to_currency} — {r.description}
                       </option>
                     ))}
                   </Select>
-                  {errors.tasaId && (
-                    <FieldError>{errors.tasaId.message}</FieldError>
+                  {errors.rateId && (
+                    <FieldError>{errors.rateId.message}</FieldError>
                   )}
                 </FormGroup>
 
@@ -567,18 +562,20 @@ export default function NewShipment() {
                     type="number"
                     step="0.01"
                     min="1"
-                    {...register("cantidadEnviar")}
+                    {...register("amountSent")}
                     placeholder="0.00"
                   />
-                  {errors.cantidadEnviar && (
-                    <FieldError>{errors.cantidadEnviar.message}</FieldError>
+                  {errors.amountSent && (
+                    <FieldError>{errors.amountSent.message}</FieldError>
                   )}
                 </FormGroup>
 
-                {selectedTasa && montoRecibido > 0 && (
+                {selectedRate && amountReceived > 0 && (
                   <AmountPreview>
                     <AmountLabel>El beneficiario recibe</AmountLabel>
-                    <AmountValue>{formatHtg(montoRecibido)}</AmountValue>
+                    <AmountValue>
+                      {formatAmount(amountReceived, selectedRate.to_currency)}
+                    </AmountValue>
                     <div
                       style={{
                         fontSize: "0.7rem",
@@ -586,9 +583,8 @@ export default function NewShipment() {
                         marginTop: "0.25rem",
                       }}
                     >
-                      Tasa: 1 {selectedTasa.monedaOrigen} ={" "}
-                      {selectedTasa.valor.toFixed(2)}{" "}
-                      {selectedTasa.monedaDestino}
+                      Tasa: 1 {selectedRate.from_currency} ={" "}
+                      {selectedRate.rate.toFixed(2)} {selectedRate.to_currency}
                     </div>
                   </AmountPreview>
                 )}
@@ -598,18 +594,18 @@ export default function NewShipment() {
                 <FormGroup>
                   <Label>Método de Pago *</Label>
                   <Select
-                    value={watch("metodoPago")}
-                    onChange={(e) => setValue("metodoPago", e.target.value)}
+                    value={paymentMethod}
+                    onChange={(e) => setValue("paymentMethod", e.target.value)}
                   >
                     <option value="">— Seleccione un método —</option>
-                    {METODOS_PAGO.map((m) => (
+                    {PAYMENT_METHODS.map((m) => (
                       <option key={m} value={m}>
                         {m}
                       </option>
                     ))}
                   </Select>
-                  {errors.metodoPago && (
-                    <FieldError>{errors.metodoPago.message}</FieldError>
+                  {errors.paymentMethod && (
+                    <FieldError>{errors.paymentMethod.message}</FieldError>
                   )}
                 </FormGroup>
 
@@ -617,11 +613,11 @@ export default function NewShipment() {
                   type="submit"
                   $fullWidth
                   $size="lg"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || saving}
                   style={{ marginTop: "0.5rem" }}
                 >
                   <Send size={16} />
-                  {isSubmitting ? "Procesando..." : "Enviar Remesa"}
+                  {isSubmitting || saving ? "Procesando..." : "Enviar Remesa"}
                 </Button>
               </CardBody>
             </Card>
