@@ -1,9 +1,9 @@
 import { configureStore } from "@reduxjs/toolkit";
 import authReducer from "./slices/authSlice";
-import beneficiariesReducer from "./slices/beneficiariesSlice";
-import sendersReducer from "./slices/sendersSlice";
-import ratesReducer from "./slices/ratesSlice";
-import { authInterceptor } from "../middleware/authInterceptor";
+import beneficiariesReducer from "./slices/beneficiariesSlice.js";
+import sendersReducer from "./slices/sendersSlice.js";
+import ratesReducer from "./slices/ratesSlice.js";
+import { authInterceptor } from "../middleware/authInterceptor.js";
 
 export const store = configureStore({
   reducer: {

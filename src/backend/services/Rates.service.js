@@ -1,4 +1,4 @@
-import { ratesRepository } from "../repositories/ratesRepository";
+import { ratesRepository } from "../repositories/RatesRepository.js";
 
 
 function normalizeError(error) {
