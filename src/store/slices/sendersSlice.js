@@ -1,5 +1,5 @@
 import { createSlice } from "@reduxjs/toolkit";
-import { sendersController } from "../../backend/controllers/senders.controller";
+import { sendersController } from "../../backend/controllers/Senders.controller.js";
 import { createServiceThunk } from "@/utils/createServiceThunk";
 
 
