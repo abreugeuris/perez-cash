@@ -1,12 +1,7 @@
 
 export const ratesController = {
-  listar: () => {
-    return [];
-  },
-  crear: (data) => {
-    // Implementación para crear una nueva tasa
-  },
-  updateOptions: (id, data) => {
-    // Implementación para actualizar una tasa
-  },
+ getAll: () => sendersService.getAll(),
+   create: (payload) => sendersService.create(payload),
+   update: (id, payload) => sendersService.update(id, payload),
+   delete: (id) => sendersService.delete(id)
 };
