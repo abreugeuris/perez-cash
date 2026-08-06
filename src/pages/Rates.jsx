@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { toast } from "sonner";
 import {
   Search,
@@ -9,7 +10,14 @@ import {
   ArrowRightLeft,
   X,
 } from "lucide-react";
-import { ratesController } from "@/backend/controllers/rates.controller";
+import {
+  fetchRates,
+  createRate,
+  updateRate,
+  toggleRateActive,
+  deleteRate,
+  clearRatesError,
+} from "@/store/slices/ratesSlice";
 import {
   PageWrapper,
   PageTitle,
@@ -41,117 +49,142 @@ import {
   EmptyState,
 } from "./styles/ratesStyled";
 
-const initialForm = {
-  monedaOrigen: "",
-  monedaDestino: "",
-  valor: "",
-  descripcion: "",
-  activa: true,
+const INITIAL_FORM = {
+  fromCurrency: "",
+  toCurrency: "",
+  rate: "",
+  description: "",
+  active: true,
 };
 
 export default function Rates() {
-  const [tasas, setTasas] = useState(() => ratesController.listar());
+  const dispatch = useDispatch();
+  const {
+    items: rates,
+    status,
+    saving,
+    deleting,
+  } = useSelector((state) => state.rates);
+  // Esta pantalla ya está restringida a owner por ProtectedRoute (/tasas),
+  // pero igual dejamos user por si en el futuro se relaja el acceso.
+  const { user } = useSelector((state) => state.auth);
+  const isOwner = user?.role === "owner";
 
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState(INITIAL_FORM);
   const [errors, setErrors] = useState({});
   const [pendingDelete, setPendingDelete] = useState(null);
 
+  useEffect(() => {
+    if (status === "idle") dispatch(fetchRates());
+    return () => dispatch(clearRatesError());
+  }, [dispatch, status]);
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
-    if (!q) return tasas;
-    return tasas.filter(
-      (t) =>
-        t.monedaOrigen.toLowerCase().includes(q) ||
-        t.monedaDestino.toLowerCase().includes(q) ||
-        t.descripcion.toLowerCase().includes(q),
+    if (!q) return rates;
+    return rates.filter(
+      (r) =>
+        r.from_currency.toLowerCase().includes(q) ||
+        r.to_currency.toLowerCase().includes(q) ||
+        (r.description ?? "").toLowerCase().includes(q),
     );
-  }, [tasas, search]);
+  }, [rates, search]);
 
   const openCreate = useCallback(() => {
-    setForm(initialForm);
+    setForm(INITIAL_FORM);
     setErrors({});
     setEditing(null);
     setModalOpen(true);
   }, []);
 
-  const openEdit = useCallback((t) => {
+  const openEdit = useCallback((r) => {
     setForm({
-      monedaOrigen: t.monedaOrigen,
-      monedaDestino: t.monedaDestino,
-      valor: String(t.valor),
-      descripcion: t.descripcion,
-      activa: t.activa,
+      fromCurrency: r.from_currency,
+      toCurrency: r.to_currency,
+      rate: String(r.rate),
+      description: r.description ?? "",
+      active: r.active,
     });
     setErrors({});
-    setEditing(t);
+    setEditing(r);
     setModalOpen(true);
   }, []);
 
   const closeModal = useCallback(() => {
     setModalOpen(false);
     setEditing(null);
-    setForm(initialForm);
+    setForm(INITIAL_FORM);
     setErrors({});
   }, []);
 
   const validate = () => {
     const errs = {};
-    if (!form.monedaOrigen.trim())
-      errs.monedaOrigen = "La moneda de origen es requerida";
-    if (!form.monedaDestino.trim())
-      errs.monedaDestino = "La moneda de destino es requerida";
-    const val = parseFloat(form.valor);
-    if (!form.valor || isNaN(val) || val <= 0)
-      errs.valor = "El valor debe ser un número positivo";
-    if (!form.descripcion.trim())
-      errs.descripcion = "La descripción es requerida";
+    if (!form.fromCurrency.trim())
+      errs.fromCurrency = "From currency is required";
+    if (!form.toCurrency.trim()) errs.toCurrency = "To currency is required";
+    const val = parseFloat(form.rate);
+    if (!form.rate || isNaN(val) || val <= 0)
+      errs.rate = "Rate must be a positive number";
+    if (!form.description.trim()) errs.description = "Description is required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
 
-    const data = { ...form, valor: parseFloat(form.valor) };
+    const payload = { ...form, rate: parseFloat(form.rate) };
 
     if (editing) {
-      ratesController.actualizar({
-        id: editing.id,
-        ...data,
-        createdAt: editing.createdAt,
-        updatedAt: editing.updatedAt,
-      });
+      const result = await dispatch(updateRate({ id: editing.id, payload }));
+      if (updateRate.fulfilled.match(result)) {
+        toast.success("Rate updated successfully");
+        closeModal();
+      } else {
+        toast.error(result.payload?.message ?? "Error updating rate");
+      }
     } else {
-      ratesController.crear(data);
+      const result = await dispatch(createRate(payload));
+      if (createRate.fulfilled.match(result)) {
+        toast.success("Rate created successfully");
+        closeModal();
+      } else {
+        toast.error(result.payload?.message ?? "Error creating rate");
+      }
     }
-    setTasas(ratesController.listar());
-    closeModal();
   };
 
-  const handleToggle = (id) => {
-    ratesController.toggleActiva(id);
-    setTasas(ratesController.listar());
+  const handleToggle = async (id) => {
+    const result = await dispatch(toggleRateActive(id));
+    if (!toggleRateActive.fulfilled.match(result)) {
+      toast.error(result.payload?.message ?? "Error toggling rate");
+    }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (pendingDelete === id) {
-      ratesController.eliminar(id);
-      setTasas(ratesController.listar());
+      const result = await dispatch(deleteRate(id));
+      if (deleteRate.fulfilled.match(result)) {
+        toast.success("Rate deleted");
+      } else {
+        toast.error(result.payload?.message ?? "Error deleting rate");
+      }
       setPendingDelete(null);
     } else {
       setPendingDelete(id);
-      toast("¿Eliminar tasa?", {
-        description: "Haz clic de nuevo en el ícono para confirmar.",
-        action: { label: "Cancelar", onClick: () => setPendingDelete(null) },
+      toast("Delete rate?", {
+        description: "Click the icon again to confirm.",
+        action: { label: "Cancel", onClick: () => setPendingDelete(null) },
       });
     }
   };
 
-  const activasCount = tasas.filter((t) => t.activa).length;
+  const activeCount = rates.filter((r) => r.active).length;
+  const isLoading = status === "loading";
 
   return (
     <PageWrapper>
@@ -167,7 +200,7 @@ export default function Rates() {
             {filtered.length} tasa{filtered.length !== 1 ? "s" : ""} configurada
             {filtered.length !== 1 ? "s" : ""}
             {" | "}
-            {activasCount} activa{activasCount !== 1 ? "s" : ""}
+            {activeCount} activa{activeCount !== 1 ? "s" : ""}
           </PageSubtitle>
         </div>
         <Button onClick={openCreate}>
@@ -184,7 +217,13 @@ export default function Rates() {
         />
       </SearchBar>
 
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <Card>
+          <CardBody style={{ textAlign: "center", padding: "3rem" }}>
+            <p>Cargando tasas…</p>
+          </CardBody>
+        </Card>
+      ) : filtered.length === 0 ? (
         <Card>
           <CardBody>
             <EmptyState>
@@ -209,8 +248,8 @@ export default function Rates() {
         </Card>
       ) : (
         <Grid $gap="0.75rem">
-          {filtered.map((t) => (
-            <TasaCard key={t.id} $inactive={!t.activa}>
+          {filtered.map((r) => (
+            <TasaCard key={r.id} $inactive={!r.active}>
               <CardBody>
                 <TasaRow>
                   <TasaInfo>
@@ -221,7 +260,7 @@ export default function Rates() {
                           fontSize: "0.75rem",
                         }}
                       >
-                        1 {t.monedaOrigen}
+                        1 {r.from_currency}
                       </span>
                       <ArrowRightLeft
                         size={14}
@@ -230,9 +269,9 @@ export default function Rates() {
                       <span
                         style={{ color: "var(--color-fg)", fontSize: "0.9rem" }}
                       >
-                        {t.valor % 1 === 0
-                          ? t.valor.toFixed(0)
-                          : t.valor.toFixed(2)}
+                        {r.rate % 1 === 0
+                          ? r.rate.toFixed(0)
+                          : r.rate.toFixed(2)}
                       </span>
                       <span
                         style={{
@@ -240,38 +279,37 @@ export default function Rates() {
                           fontSize: "0.75rem",
                         }}
                       >
-                        {t.monedaDestino}
+                        {r.to_currency}
                       </span>
                       <ToggleBtn
-                        $on={t.activa}
-                        onClick={() => handleToggle(t.id)}
-                        title={t.activa ? "Desactivar" : "Activar"}
+                        $on={r.active}
+                        onClick={() => handleToggle(r.id)}
+                        title={r.active ? "Desactivar" : "Activar"}
                       />
-                      <TasaBadge $active={t.activa}>
-                        {t.activa ? "Activa" : "Inactiva"}
+                      <TasaBadge $active={r.active}>
+                        {r.active ? "Activa" : "Inactiva"}
                       </TasaBadge>
                     </TasaRate>
-                    <TasaDesc>{t.descripcion}</TasaDesc>
+                    <TasaDesc>{r.description}</TasaDesc>
                   </TasaInfo>
                   <Actions>
                     <Button
                       $variant="ghost"
                       $size="sm"
-                      onClick={() => openEdit(t)}
-                      title="Editar"
+                      onClick={() => openEdit(r)}
+                      title="Edit"
                     >
                       <Pencil size={14} />
                     </Button>
                     <Button
                       $variant={
-                        pendingDelete === t.id ? "destructive" : "ghost"
+                        pendingDelete === r.id ? "destructive" : "ghost"
                       }
                       $size="sm"
-                      onClick={() => handleDelete(t.id)}
+                      onClick={() => handleDelete(r.id)}
+                      disabled={deleting}
                       title={
-                        pendingDelete === t.id
-                          ? "Confirmar eliminación"
-                          : "Eliminar"
+                        pendingDelete === r.id ? "Confirm delete" : "Delete"
                       }
                     >
                       <Trash2 size={14} />
@@ -301,56 +339,64 @@ export default function Rates() {
                   style={{ marginBottom: "0.75rem" }}
                 >
                   <FormGroup>
-                    <Label>Moneda Origen *</Label>
+                    <Label htmlFor="fromCurrency">Moneda Origen *</Label>
                     <Input
-                      value={form.monedaOrigen}
+                      id="fromCurrency"
+                      value={form.fromCurrency}
                       onChange={(e) =>
-                        setForm({ ...form, monedaOrigen: e.target.value })
+                        setForm({
+                          ...form,
+                          fromCurrency: e.target.value.toUpperCase(),
+                        })
                       }
                       placeholder="DOP"
                     />
-                    {errors.monedaOrigen && (
-                      <ErrorMsg>{errors.monedaOrigen}</ErrorMsg>
+                    {errors.fromCurrency && (
+                      <ErrorMsg>{errors.fromCurrency}</ErrorMsg>
                     )}
                   </FormGroup>
                   <FormGroup>
-                    <Label>Moneda Destino *</Label>
+                    <Label htmlFor="toCurrency">Moneda Destino *</Label>
                     <Input
-                      value={form.monedaDestino}
+                      id="toCurrency"
+                      value={form.toCurrency}
                       onChange={(e) =>
-                        setForm({ ...form, monedaDestino: e.target.value })
+                        setForm({
+                          ...form,
+                          toCurrency: e.target.value.toUpperCase(),
+                        })
                       }
                       placeholder="HTG"
                     />
-                    {errors.monedaDestino && (
-                      <ErrorMsg>{errors.monedaDestino}</ErrorMsg>
+                    {errors.toCurrency && (
+                      <ErrorMsg>{errors.toCurrency}</ErrorMsg>
                     )}
                   </FormGroup>
                 </Grid>
                 <FormGroup>
-                  <Label>Valor *</Label>
+                  <Label htmlFor="rate">Valor *</Label>
                   <Input
+                    id="rate"
                     type="number"
                     step="0.01"
-                    value={form.valor}
-                    onChange={(e) =>
-                      setForm({ ...form, valor: e.target.value })
-                    }
+                    value={form.rate}
+                    onChange={(e) => setForm({ ...form, rate: e.target.value })}
                     placeholder="2.35"
                   />
-                  {errors.valor && <ErrorMsg>{errors.valor}</ErrorMsg>}
+                  {errors.rate && <ErrorMsg>{errors.rate}</ErrorMsg>}
                 </FormGroup>
                 <FormGroup>
-                  <Label>Descripción *</Label>
+                  <Label htmlFor="description">Descripción *</Label>
                   <Input
-                    value={form.descripcion}
+                    id="description"
+                    value={form.description}
                     onChange={(e) =>
-                      setForm({ ...form, descripcion: e.target.value })
+                      setForm({ ...form, description: e.target.value })
                     }
                     placeholder="Tasa estándar Peso Dominicano → Gourde Haitiano"
                   />
-                  {errors.descripcion && (
-                    <ErrorMsg>{errors.descripcion}</ErrorMsg>
+                  {errors.description && (
+                    <ErrorMsg>{errors.description}</ErrorMsg>
                   )}
                 </FormGroup>
                 <Flex
@@ -359,18 +405,18 @@ export default function Rates() {
                   style={{ marginBottom: "0.75rem" }}
                 >
                   <ToggleBtn
-                    $on={form.activa}
-                    onClick={() => setForm({ ...form, activa: !form.activa })}
+                    $on={form.active}
+                    onClick={() => setForm({ ...form, active: !form.active })}
                   />
                   <span
                     style={{
                       fontSize: "0.8rem",
-                      color: form.activa
+                      color: form.active
                         ? "var(--color-success)"
                         : "var(--color-muted-fg)",
                     }}
                   >
-                    {form.activa ? "Tasa activa" : "Tasa inactiva"}
+                    {form.active ? "Tasa activa" : "Tasa inactiva"}
                   </span>
                 </Flex>
                 <Flex
@@ -381,8 +427,12 @@ export default function Rates() {
                   <Button type="button" $variant="outline" onClick={closeModal}>
                     Cancelar
                   </Button>
-                  <Button type="submit">
-                    {editing ? "Guardar Cambios" : "Crear Tasa"}
+                  <Button type="submit" disabled={saving}>
+                    {saving
+                      ? "Guardando…"
+                      : editing
+                        ? "Guardar Cambios"
+                        : "Crear Tasa"}
                   </Button>
                 </Flex>
               </form>

@@ -1,12 +1,9 @@
+import { ratesService } from '../services/Rates.service'
 
 export const ratesController = {
-  listar: () => {
-    return [];
-  },
-  crear: (data) => {
-    // Implementación para crear una nueva tasa
-  },
-  updateOptions: (id, data) => {
-    // Implementación para actualizar una tasa
-  },
-};
+  getAll:       ()            => ratesService.getAll(),
+  create:       (payload)     => ratesService.create(payload),
+  update:       (id, payload) => ratesService.update(id, payload),
+  toggleActive: (id)          => ratesService.toggleActive(id),
+  delete:       (id)          => ratesService.delete(id),
+}
