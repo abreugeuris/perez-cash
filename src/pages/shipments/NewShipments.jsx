@@ -15,10 +15,10 @@ import {
   FormGroup,
 } from "./styles/newShipmentsStyle.js";
 import { toast } from "sonner";
-import { shipmentsController } from "@/backend/controllers/shipmentsController";
-import { sendersController } from "@/backend/controllers/sendersController";
-import { recipientsController } from "@/backend/controllers/recipients.controller";
-import { ratesController } from "@/backend/controllers/rates.controller";
+// import { shipmentsController } from "@/backend/controllers/shipmentsController";
+// import { sendersController } from "@/backend/controllers/sendersController";
+// import { recipientsController } from "@/backend/controllers/recipients.controller";
+// import { ratesController } from "@/backend/controllers/rates.controller";
 import {
   PageWrapper,
   PageTitle,
@@ -153,100 +153,100 @@ export default function NewShipment() {
     }
   };
 
-  const onSubmit = async (data) => {
-    // Validate manually
-    if (data.remitenteMode === "select" && !data.remitenteId) {
-      setError("remitenteId", { message: "Seleccione un remitente existente" });
-      return;
-    }
-    if (data.remitenteMode === "create") {
-      if (!data.remitenteNombre?.trim()) {
-        setError("remitenteNombre", { message: "Requerido" });
-        return;
-      }
-      if (!data.remitenteApellido?.trim()) {
-        setError("remitenteApellido", { message: "Requerido" });
-        return;
-      }
-      if (!data.remitenteTelefono?.trim()) {
-        setError("remitenteTelefono", { message: "Requerido" });
-        return;
-      }
-      if (!data.remitenteCedula?.trim()) {
-        setError("remitenteCedula", { message: "Requerido" });
-        return;
-      }
-    }
-    if (data.beneficiarioMode === "select" && !data.beneficiarioId) {
-      setError("beneficiarioId", {
-        message: "Seleccione un beneficiario existente",
-      });
-      return;
-    }
-    if (data.beneficiarioMode === "create") {
-      if (!data.beneficiarioNombre?.trim()) {
-        setError("beneficiarioNombre", { message: "Requerido" });
-        return;
-      }
-      if (!data.beneficiarioApellido?.trim()) {
-        setError("beneficiarioApellido", { message: "Requerido" });
-        return;
-      }
-      if (!data.beneficiarioTelefono?.trim()) {
-        setError("beneficiarioTelefono", { message: "Requerido" });
-        return;
-      }
-    }
-    if (!data.metodoPago) {
-      setError("metodoPago", { message: "Seleccione un método de pago" });
-      return;
-    }
-    if (!data.tasaId) {
-      setError("tasaId", { message: "Seleccione una tasa" });
-      return;
-    }
-    const cantVal = parseFloat(data.cantidadEnviar);
-    if (!cantVal || cantVal <= 0) {
-      setError("cantidadEnviar", { message: "Ingrese un monto válido" });
-      return;
-    }
+  // const onSubmit = async (data) => {
+  //   // Validate manually
+  //   if (data.remitenteMode === "select" && !data.remitenteId) {
+  //     setError("remitenteId", { message: "Seleccione un remitente existente" });
+  //     return;
+  //   }
+  //   if (data.remitenteMode === "create") {
+  //     if (!data.remitenteNombre?.trim()) {
+  //       setError("remitenteNombre", { message: "Requerido" });
+  //       return;
+  //     }
+  //     if (!data.remitenteApellido?.trim()) {
+  //       setError("remitenteApellido", { message: "Requerido" });
+  //       return;
+  //     }
+  //     if (!data.remitenteTelefono?.trim()) {
+  //       setError("remitenteTelefono", { message: "Requerido" });
+  //       return;
+  //     }
+  //     if (!data.remitenteCedula?.trim()) {
+  //       setError("remitenteCedula", { message: "Requerido" });
+  //       return;
+  //     }
+  //   }
+  //   if (data.beneficiarioMode === "select" && !data.beneficiarioId) {
+  //     setError("beneficiarioId", {
+  //       message: "Seleccione un beneficiario existente",
+  //     });
+  //     return;
+  //   }
+  //   if (data.beneficiarioMode === "create") {
+  //     if (!data.beneficiarioNombre?.trim()) {
+  //       setError("beneficiarioNombre", { message: "Requerido" });
+  //       return;
+  //     }
+  //     if (!data.beneficiarioApellido?.trim()) {
+  //       setError("beneficiarioApellido", { message: "Requerido" });
+  //       return;
+  //     }
+  //     if (!data.beneficiarioTelefono?.trim()) {
+  //       setError("beneficiarioTelefono", { message: "Requerido" });
+  //       return;
+  //     }
+  //   }
+  //   if (!data.metodoPago) {
+  //     setError("metodoPago", { message: "Seleccione un método de pago" });
+  //     return;
+  //   }
+  //   if (!data.tasaId) {
+  //     setError("tasaId", { message: "Seleccione una tasa" });
+  //     return;
+  //   }
+  //   const cantVal = parseFloat(data.cantidadEnviar);
+  //   if (!cantVal || cantVal <= 0) {
+  //     setError("cantidadEnviar", { message: "Ingrese un monto válido" });
+  //     return;
+  //   }
 
-    try {
-      const result = shipmentsController.crear({
-        remitente:
-          data.remitenteMode === "create"
-            ? {
-                nombre: data.remitenteNombre.trim(),
-                apellido: data.remitenteApellido.trim(),
-                telefono: data.remitenteTelefono.trim(),
-                cedula: data.remitenteCedula.trim(),
-                direccion: (data.remitenteDireccion || "").trim(),
-              }
-            : { telefono: selectedRemitente?.telefono },
-        beneficiario:
-          data.beneficiarioMode === "create"
-            ? {
-                nombre: data.beneficiarioNombre.trim(),
-                apellido: data.beneficiarioApellido.trim(),
-                telefono: data.beneficiarioTelefono.trim(),
-                pais: (data.beneficiarioPais || "Haití").trim(),
-                direccion: (data.beneficiarioDireccion || "").trim(),
-              }
-            : { telefono: selectedBeneficiario?.telefono },
-        tasaId: data.tasaId,
-        montoEnviado: cantVal,
-        metodoPago: data.metodoPago,
-        estado: "pendiente",
-        fecha: new Date().toISOString(),
-      });
+  //   try {
+  //     const result = shipmentsController.crear({
+  //       remitente:
+  //         data.remitenteMode === "create"
+  //           ? {
+  //               nombre: data.remitenteNombre.trim(),
+  //               apellido: data.remitenteApellido.trim(),
+  //               telefono: data.remitenteTelefono.trim(),
+  //               cedula: data.remitenteCedula.trim(),
+  //               direccion: (data.remitenteDireccion || "").trim(),
+  //             }
+  //           : { telefono: selectedRemitente?.telefono },
+  //       beneficiario:
+  //         data.beneficiarioMode === "create"
+  //           ? {
+  //               nombre: data.beneficiarioNombre.trim(),
+  //               apellido: data.beneficiarioApellido.trim(),
+  //               telefono: data.beneficiarioTelefono.trim(),
+  //               pais: (data.beneficiarioPais || "Haití").trim(),
+  //               direccion: (data.beneficiarioDireccion || "").trim(),
+  //             }
+  //           : { telefono: selectedBeneficiario?.telefono },
+  //       tasaId: data.tasaId,
+  //       montoEnviado: cantVal,
+  //       metodoPago: data.metodoPago,
+  //       estado: "pendiente",
+  //       fecha: new Date().toISOString(),
+  //     });
 
-      if (result?.id) {
-        navigate(`/envios/${result.id}/recibo`);
-      }
-    } catch (_) {
-      // Error already shown by controller
-    }
-  };
+  //     if (result?.id) {
+  //       navigate(`/envios/${result.id}/recibo`);
+  //     }
+  //   } catch (_) {
+  //     // Error already shown by controller
+  //   }
+  // };
 
   return (
     <PageWrapper>

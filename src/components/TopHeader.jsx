@@ -8,11 +8,13 @@ import {
   Avatar,
 } from "@/components/styles/topHeaderStyled";
 
+import { authController } from "@/backend/controllers/auth.controller";
+
 export default function TopHeader() {
   const user ={ nombre: "John", apellido: "Doe", rol: "admin" };
 
   const doLogout = () => {
-    signOut();
+    authController.logout();
     window.location.href = "/auth/login";
   };
 

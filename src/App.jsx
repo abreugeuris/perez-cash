@@ -1,53 +1,61 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useDispatch } from 'react-redux';
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import Layout from './components/layout';
 import TooltipProvider from './components/TooltipProvider';
 import { Toaster } from 'sonner';
 import Login from './pages/auth/Login';
 import Recovery from './pages/auth/Recovery';
 import Register from './pages/auth/Regiter';
-import Recipient from './pages/Recipient';
+import Beneficiaries  from './pages/Beneficiaries';
 import Dashboard from './pages/Dashboard';
 import Senders from './pages/Senders';
 import Rates from './pages/Rates.jsx';
 import ShipmentsHistory from './pages/shipments/ShipmentsHistory.jsx';
 import NewShipment from './pages/shipments/NewShipments.jsx';
-
-
-// import Dashboard from '@/pages/dashboard/Dashboard';
-// import Remitentes from '@/pages/dashboard/Remitentes';
-// import Beneficiarios from '@/pages/dashboard/Beneficiarios';
-// import Tasas from '@/pages/dashboard/Tasas';
-// import NuevoEnvio from '@/pages/envios/NuevoEnvio';
-// import HistorialEnvios from '@/pages/envios/HistorialEnvios';
-// import Recibo from '@/pages/envios/Recibo';
-// import { useAuth } from '@/hooks/useAuth';
-
-function ProtectedRoute({ children }) {
-  // const { isAuthenticated } = useAuth();
-  // if (!isAuthenticated) return <Navigate to="/auth/login" replace />;
-  return children;
-}
+import ProtectedRoute from './components/ProtectedRoute';
+import { restoreSession, watchSession } from './store/slices/authSlice';
 
 export default function App() {
+  const dispatch = useDispatch();
+
+  useEffect(() => {
+    // 1. Rehidratar Redux desde la sesión guardada en localStorage.
+    dispatch(restoreSession())
+
+    // 2. Suscribirse a cambios de sesión en tiempo real:
+    //    - TOKEN_REFRESHED → actualiza el token en el store
+    //    - SIGNED_OUT      → forceLogout → ProtectedRoute redirige al login
+    const unsubscribe = dispatch(watchSession())
+
+    // Cancelar la suscripción al desmontar la app
+    return () => unsubscribe()
+  }, [dispatch]);
+
   return (
     <TooltipProvider>
       <Toaster richColors position="top-right" />
       <Routes>
-        {/* <Route path="/" element={<Navigate to="/auth/login" replace />} />
-        //  />
-        <Route path="/auth/register" element={<Register />} />
-        <Route path="/auth/recuperar" element={<Recuperar />} /> */}
+        {/* Rutas públicas */}
         <Route path="/auth/login" element={<Login />} />
         <Route path="/auth/recovery" element={<Recovery />} />
-         <Route path="/auth/register" element={<Register />} />
+        <Route path="/auth/register" element={<Register />} />
+
+        {/* Rutas protegidas — cualquier staff logueado */}
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route path="/dashboard" element={<Dashboard />} />
-           <Route path="/remitentes" element={<Senders/>} />
-          <Route path="/beneficiarios" element={<Recipient />} />
-          <Route path="/tasas" element={<Rates />} />
+          <Route path="/remitentes" element={<Senders />} />
+          <Route path="/beneficiarios" element={<Beneficiaries />} />
           <Route path="/envios/historial" element={<ShipmentsHistory />} />
           <Route path="/envios/nuevo" element={<NewShipment />} />
-          <Route path="/envios/:envioId/recibo" element={<p>Recibo</p>} /> 
+          <Route path="/envios/:envioId/recibo" element={<p>Recibo</p>} />
+
+          {/* Rutas exclusivas del owner */}
+          <Route element={<ProtectedRoute allowedRoles={['owner']}><Outlet /></ProtectedRoute>}>
+            <Route path="/tasas" element={<Rates />} />
+            {/* <Route path="/cajeros" element={<CashierManagement />} /> */}
+          </Route>
+
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Routes>

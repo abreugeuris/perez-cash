@@ -1,6 +1,10 @@
 import { jwtDecode } from 'jwt-decode'
 import { authRepository } from '../repositories/auth.repository'
 
+/**
+ * Normaliza cualquier error de Supabase (o de red) a un shape
+ * consistente que el resto de la app pueda leer sin importar el origen.
+ */
 function normalizeError(error) {
   return {
     message: error?.message || 'Ha ocurrido un error inesperado',
@@ -8,13 +12,16 @@ function normalizeError(error) {
   }
 }
 
+/**
+ * Construye el objeto de sesión que guardamos en el store.
+ * - rol: viene del claim "user_role" del JWT (Custom Access Token Hook).
+ * - fullName y active: vienen del RPC get_my_profile (nunca .from() directo).
+ */
 async function buildSessionPayload(data) {
   const decoded = jwtDecode(data.session.access_token)
   const profile = await authRepository.getMyProfile()
 
   if (!profile || !profile.active) {
-    // El perfil fue desactivado por el owner (o nunca se creó).
-    // Cerramos la sesión recién creada antes de propagar el error.
     await authRepository.signOut()
     throw { message: 'Tu usuario está inactivo. Contacta al dueño del negocio.', status: 403 }
   }
@@ -81,5 +88,9 @@ export const authService = {
     } catch (error) {
       throw normalizeError(error)
     }
+  },
+
+  subscribeToAuthChanges(callback) {
+    return authRepository.subscribeToAuthChanges(callback)
   },
 }

@@ -1,24 +1,24 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { toast } from "sonner";
 import {
   Search,
   Plus,
   Pencil,
   Trash2,
-  Users,
+  UserCheck,
   Phone,
   MapPin,
-  IdCard,
+  Flag,
   X,
 } from "lucide-react";
-import { toast } from "sonner";
 import {
-  fetchSenders,
-  createSender,
-  updateSender,
-  deleteSender,
-  clearSendersError,
-} from "@/store/slices/sendersSlice";
+  fetchBeneficiaries,
+  createBeneficiary,
+  updateBeneficiary,
+  deleteBeneficiary,
+  clearBeneficiariesError,
+} from "@/store/slices/beneficiariesSlice";
 import {
   PageWrapper,
   PageTitle,
@@ -35,35 +35,39 @@ import {
 } from "@/styles/components";
 import {
   SearchBar,
-  RemitenteCard,
-  RemitenteRow,
-  RemitenteInfo,
-  RemitenteName,
-  RemitenteMeta,
+  BenCard,
+  BenRow,
+  BenInfo,
+  BenName,
+  BenMeta,
   Actions,
   ModalOverlay,
   ModalCard,
   FormGroup,
   ErrorMsg,
   EmptyState,
-} from "./styles/sendersStyled";
+  CountryFlag,
+} from "./styles/recipientStyled";
 
 const INITIAL_FORM = {
   name: "",
   phone: "",
   idDocument: "",
-  address: "",
+  country: "Haití",
+  paymentMethod: "",
+  bankAccount: "",
+  bank: "",
   notes: "",
 };
 
-export default function Senders() {
+export default function Beneficiaries() {
   const dispatch = useDispatch();
   const {
-    items: senders,
+    items: beneficiaries,
     status,
     saving,
     deleting,
-  } = useSelector((state) => state.senders);
+  } = useSelector((state) => state.beneficiaries);
   const { user } = useSelector((state) => state.auth);
   const isOwner = user?.role === "owner";
 
@@ -74,23 +78,21 @@ export default function Senders() {
   const [errors, setErrors] = useState({});
   const [pendingDelete, setPendingDelete] = useState(null);
 
-  // Load senders on mount
   useEffect(() => {
-    if (status === "idle") dispatch(fetchSenders());
-    return () => dispatch(clearSendersError());
+    if (status === "idle") dispatch(fetchBeneficiaries());
+    return () => dispatch(clearBeneficiariesError());
   }, [dispatch, status]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
-    if (!q) return senders;
-    return senders.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.phone.toLowerCase().includes(q) ||
-        (s.id_document ?? "").toLowerCase().includes(q) ||
-        (s.address ?? "").toLowerCase().includes(q),
+    if (!q) return beneficiaries;
+    return beneficiaries.filter(
+      (b) =>
+        b.name.toLowerCase().includes(q) ||
+        b.phone.toLowerCase().includes(q) ||
+        (b.country ?? "").toLowerCase().includes(q),
     );
-  }, [senders, search]);
+  }, [beneficiaries, search]);
 
   const openCreate = useCallback(() => {
     setForm(INITIAL_FORM);
@@ -99,16 +101,19 @@ export default function Senders() {
     setModalOpen(true);
   }, []);
 
-  const openEdit = useCallback((s) => {
+  const openEdit = useCallback((b) => {
     setForm({
-      name: s.name,
-      phone: s.phone,
-      idDocument: s.id_document ?? "",
-      address: s.address ?? "",
-      notes: s.notes ?? "",
+      name: b.name,
+      phone: b.phone,
+      idDocument: b.id_document ?? "",
+      country: b.country ?? "Haití",
+      paymentMethod: b.payment_method ?? "",
+      bankAccount: b.bank_account ?? "",
+      bank: b.bank ?? "",
+      notes: b.notes ?? "",
     });
     setErrors({});
-    setEditing(s);
+    setEditing(b);
     setModalOpen(true);
   }, []);
 
@@ -124,9 +129,7 @@ export default function Senders() {
     if (!form.name.trim()) errs.name = "Name is required";
     if (!form.phone.trim() || form.phone.length < 6)
       errs.phone = "Invalid phone number";
-    if (!form.idDocument.trim() || form.idDocument.length < 6)
-      errs.idDocument = "Invalid ID document";
-    if (!form.address.trim()) errs.address = "Address is required";
+    if (!form.country.trim()) errs.country = "Country is required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -137,37 +140,37 @@ export default function Senders() {
 
     if (editing) {
       const result = await dispatch(
-        updateSender({ id: editing.id, payload: form }),
+        updateBeneficiary({ id: editing.id, payload: form }),
       );
-      if (updateSender.fulfilled.match(result)) {
-        toast.success("Sender updated successfully");
+      if (updateBeneficiary.fulfilled.match(result)) {
+        toast.success("Beneficiary updated successfully");
         closeModal();
       } else {
-        toast.error(result.payload?.message ?? "Error updating sender");
+        toast.error(result.payload?.message ?? "Error updating beneficiary");
       }
     } else {
-      const result = await dispatch(createSender(form));
-      if (createSender.fulfilled.match(result)) {
-        toast.success("Sender created successfully");
+      const result = await dispatch(createBeneficiary(form));
+      if (createBeneficiary.fulfilled.match(result)) {
+        toast.success("Beneficiary created successfully");
         closeModal();
       } else {
-        toast.error(result.payload?.message ?? "Error creating sender");
+        toast.error(result.payload?.message ?? "Error creating beneficiary");
       }
     }
   };
 
   const handleDelete = async (id) => {
     if (pendingDelete === id) {
-      const result = await dispatch(deleteSender(id));
-      if (deleteSender.fulfilled.match(result)) {
-        toast.success("Sender deleted");
+      const result = await dispatch(deleteBeneficiary(id));
+      if (deleteBeneficiary.fulfilled.match(result)) {
+        toast.success("Beneficiary deleted");
       } else {
-        toast.error(result.payload?.message ?? "Error deleting sender");
+        toast.error(result.payload?.message ?? "Error deleting beneficiary");
       }
       setPendingDelete(null);
     } else {
       setPendingDelete(id);
-      toast("Delete sender?", {
+      toast("Delete beneficiary?", {
         description: "Click the icon again to confirm.",
         action: { label: "Cancel", onClick: () => setPendingDelete(null) },
       });
@@ -181,25 +184,26 @@ export default function Senders() {
       <Flex
         $justify="space-between"
         $align="center"
+        width="100%"
         $wrap
         style={{ marginBottom: "0.25rem" }}
       >
         <div>
-          <PageTitle>Gestión de Remitentes</PageTitle>
+          <PageTitle>Gestión de Beneficiarios</PageTitle>
           <PageSubtitle>
-            {filtered.length} remitente{filtered.length !== 1 ? "s" : ""}{" "}
+            {filtered.length} beneficiario{filtered.length !== 1 ? "s" : ""}{" "}
             registrado{filtered.length !== 1 ? "s" : ""}
           </PageSubtitle>
         </div>
-        <Button onClick={openCreate}>
-          <Plus size={16} /> Nuevo Remitente
+        <Button size="lg" onClick={openCreate}>
+          <Plus size={16} /> Nuevo Beneficiario
         </Button>
       </Flex>
 
       <SearchBar>
         <Search size={16} />
         <Input
-          placeholder="Buscar por nombre, teléfono o cédula…"
+          placeholder="Buscar por nombre, teléfono o país…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -208,27 +212,31 @@ export default function Senders() {
       {isLoading ? (
         <Card>
           <CardBody style={{ textAlign: "center", padding: "3rem" }}>
-            <p>Cargando remitentes…</p>
+            <p>Cargando beneficiarios…</p>
           </CardBody>
         </Card>
       ) : filtered.length === 0 ? (
         <Card>
-          <CardBody>
+          <CardBody
+            style={{
+              padding: 0,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              minHeight: "360px",
+            }}
+          >
             <EmptyState>
-              <Users size={40} />
-              <h3>{search ? "Sin resultados" : "No hay remitentes"}</h3>
+              <UserCheck size={52} />
+              <h3>{search ? "Sin resultados" : "No hay beneficiarios"}</h3>
               <p>
                 {search
                   ? "Intenta con otros términos de búsqueda."
-                  : "Agrega tu primer remitente para comenzar."}
+                  : "Agrega tu primer beneficiario para comenzar."}
               </p>
               {!search && (
-                <Button
-                  $variant="outline"
-                  onClick={openCreate}
-                  style={{ marginTop: "1rem" }}
-                >
-                  <Plus size={16} /> Nuevo Remitente
+                <Button $variant="outline" onClick={openCreate} size="lg">
+                  <Plus size={16} /> Nuevo Beneficiario
                 </Button>
               )}
             </EmptyState>
@@ -236,31 +244,33 @@ export default function Senders() {
         </Card>
       ) : (
         <Grid $gap="0.75rem">
-          {filtered.map((s) => (
-            <RemitenteCard key={s.id}>
+          {filtered.map((b) => (
+            <BenCard key={b.id}>
               <CardBody>
-                <RemitenteRow>
-                  <RemitenteInfo>
-                    <RemitenteName>{s.name}</RemitenteName>
-                    <RemitenteMeta>
+                <BenRow>
+                  <BenInfo>
+                    <BenName>{b.name}</BenName>
+                    <BenMeta>
                       <span>
-                        <IdCard size={12} /> {s.id_document}
+                        <Phone size={12} /> {b.phone}
                       </span>
                       <span>
-                        <Phone size={12} /> {s.phone}
+                        <CountryFlag>
+                          <Flag size={12} /> {b.country}
+                        </CountryFlag>
                       </span>
-                      {s.address && (
+                      {b.notes && (
                         <span>
-                          <MapPin size={12} /> {s.address}
+                          <MapPin size={12} /> {b.notes}
                         </span>
                       )}
-                    </RemitenteMeta>
-                  </RemitenteInfo>
+                    </BenMeta>
+                  </BenInfo>
                   <Actions>
                     <Button
                       $variant="ghost"
                       $size="sm"
-                      onClick={() => openEdit(s)}
+                      onClick={() => openEdit(b)}
                       title="Edit"
                     >
                       <Pencil size={14} />
@@ -268,22 +278,22 @@ export default function Senders() {
                     {isOwner && (
                       <Button
                         $variant={
-                          pendingDelete === s.id ? "destructive" : "ghost"
+                          pendingDelete === b.id ? "destructive" : "ghost"
                         }
                         $size="sm"
-                        onClick={() => handleDelete(s.id)}
+                        onClick={() => handleDelete(b.id)}
                         disabled={deleting}
                         title={
-                          pendingDelete === s.id ? "Confirm delete" : "Delete"
+                          pendingDelete === b.id ? "Confirm delete" : "Delete"
                         }
                       >
                         <Trash2 size={14} />
                       </Button>
                     )}
                   </Actions>
-                </RemitenteRow>
+                </BenRow>
               </CardBody>
-            </RemitenteCard>
+            </BenCard>
           ))}
         </Grid>
       )}
@@ -293,7 +303,7 @@ export default function Senders() {
           <ModalCard onClick={(e) => e.stopPropagation()}>
             <CardHeader>
               <CardTitle>
-                {editing ? "Editar Remitente" : "Nuevo Remitente"}
+                {editing ? "Editar Beneficiario" : "Nuevo Beneficiario"}
               </CardTitle>
               <Button $variant="ghost" $size="sm" onClick={closeModal}>
                 <X size={16} />
@@ -307,7 +317,7 @@ export default function Senders() {
                     id="name"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Ej: José Pérez"
+                    placeholder="Ej: Jean Baptiste"
                   />
                   {errors.name && <ErrorMsg>{errors.name}</ErrorMsg>}
                 </FormGroup>
@@ -319,35 +329,63 @@ export default function Senders() {
                     onChange={(e) =>
                       setForm({ ...form, phone: e.target.value })
                     }
-                    placeholder="+1 (809) 555-0101"
+                    placeholder="+509 4444-1100"
                   />
                   {errors.phone && <ErrorMsg>{errors.phone}</ErrorMsg>}
                 </FormGroup>
                 <FormGroup>
-                  <Label htmlFor="idDocument">Cédula *</Label>
+                  <Label htmlFor="country">País *</Label>
+                  <Input
+                    id="country"
+                    value={form.country}
+                    onChange={(e) =>
+                      setForm({ ...form, country: e.target.value })
+                    }
+                    placeholder="Haití"
+                  />
+                  {errors.country && <ErrorMsg>{errors.country}</ErrorMsg>}
+                </FormGroup>
+                <FormGroup>
+                  <Label htmlFor="idDocument">Documento de identidad</Label>
                   <Input
                     id="idDocument"
                     value={form.idDocument}
                     onChange={(e) =>
                       setForm({ ...form, idDocument: e.target.value })
                     }
-                    placeholder="402-1234567-8"
+                    placeholder="Opcional"
                   />
-                  {errors.idDocument && (
-                    <ErrorMsg>{errors.idDocument}</ErrorMsg>
-                  )}
                 </FormGroup>
                 <FormGroup>
-                  <Label htmlFor="address">Dirección *</Label>
+                  <Label htmlFor="paymentMethod">Método de pago</Label>
                   <Input
-                    id="address"
-                    value={form.address}
+                    id="paymentMethod"
+                    value={form.paymentMethod}
                     onChange={(e) =>
-                      setForm({ ...form, address: e.target.value })
+                      setForm({ ...form, paymentMethod: e.target.value })
                     }
-                    placeholder="Calle Duarte #45, Santo Domingo"
+                    placeholder="Ej: efectivo, banco"
                   />
-                  {errors.address && <ErrorMsg>{errors.address}</ErrorMsg>}
+                </FormGroup>
+                <FormGroup>
+                  <Label htmlFor="bank">Banco</Label>
+                  <Input
+                    id="bank"
+                    value={form.bank}
+                    onChange={(e) => setForm({ ...form, bank: e.target.value })}
+                    placeholder="Opcional"
+                  />
+                </FormGroup>
+                <FormGroup>
+                  <Label htmlFor="bankAccount">Número de cuenta</Label>
+                  <Input
+                    id="bankAccount"
+                    value={form.bankAccount}
+                    onChange={(e) =>
+                      setForm({ ...form, bankAccount: e.target.value })
+                    }
+                    placeholder="Opcional"
+                  />
                 </FormGroup>
                 <FormGroup>
                   <Label htmlFor="notes">Notas</Label>
@@ -357,7 +395,7 @@ export default function Senders() {
                     onChange={(e) =>
                       setForm({ ...form, notes: e.target.value })
                     }
-                    placeholder="Observaciones opcionales"
+                    placeholder="Dirección u observaciones"
                   />
                 </FormGroup>
                 <Flex
@@ -373,7 +411,7 @@ export default function Senders() {
                       ? "Guardando…"
                       : editing
                         ? "Guardar Cambios"
-                        : "Crear Remitente"}
+                        : "Crear Beneficiario"}
                   </Button>
                 </Flex>
               </form>

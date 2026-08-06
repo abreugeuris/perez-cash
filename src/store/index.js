@@ -1,16 +1,14 @@
 import { configureStore } from "@reduxjs/toolkit";
-import authReducer from "./slices/authSlice"; 
+import authReducer from "./slices/authSlice";
+import beneficiariesReducer from "./slices/BeneficiariesSlice";
 import { authInterceptor } from "../middleware/authInterceptor";
-// import clientsReducer from "./clientsSlice"
-// import productsReducer from "./productsSlice"
-// import salesHistoryReducer from "./salesHistorySlice"
+import sendersReducer from "./slices/sendersSlice";
 
 export const store = configureStore({
   reducer: {
     auth: authReducer,
-    // clients: clientsReducer,
-    // products : productsReducer,
-    // salesHistory : salesHistoryReducer,
+    beneficiaries: beneficiariesReducer,
+    senders: sendersReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(authInterceptor),

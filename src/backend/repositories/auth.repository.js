@@ -1,4 +1,4 @@
-import { supabase } from '../../lib/supaBase'
+import { supabase } from '@/lib/supabaseClient';
 
 /**
  * Repository de autenticación.
@@ -7,11 +7,7 @@ import { supabase } from '../../lib/supaBase'
  */
 export const authRepository = {
   async signInWithPassword(email, password) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
     return data // { user, session }
   },
@@ -27,13 +23,22 @@ export const authRepository = {
     return data.session
   },
 
-  // Trae el perfil del usuario actual vía RPC (nunca .from('profiles')
-  // directo desde React). El RPC usa auth.uid() internamente, por eso
-  // no recibe parámetros.
   async getMyProfile() {
     const { data, error } = await supabase.rpc('get_my_profile')
     if (error) throw error
-    // get_my_profile devuelve un array (returns table); tomamos la 1ra fila
     return data?.[0] ?? null
+  },
+
+  /**
+   * Escucha cambios de sesión en tiempo real.
+   * Supabase emite eventos cuando el token se refresca, la sesión
+   * expira o el usuario es desconectado desde otro tab/dispositivo.
+   * Devuelve una función para cancelar la suscripción (cleanup).
+   */
+  subscribeToAuthChanges(callback) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => callback(event, session)
+    )
+    return () => subscription.unsubscribe()
   },
 }
