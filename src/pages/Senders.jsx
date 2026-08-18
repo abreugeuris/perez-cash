@@ -1,38 +1,15 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  Search,
-  Plus,
-  Pencil,
-  Trash2,
-  Users,
-  Phone,
-  MapPin,
-  IdCard,
-  X,
-} from "lucide-react";
+import { Pencil, Trash2, Users, Phone, MapPin, IdCard } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchSenders,
-  createSender,
-  updateSender,
   deleteSender,
   clearSendersError,
 } from "@/store/slices/sendersSlice";
-import {
-  PageWrapper,
-  PageTitle,
-  PageSubtitle,
-  Card,
-  CardHeader,
-  CardTitle,
-  CardBody,
-  Button,
-  Input,
-  Label,
-  Flex,
-  Grid,
-} from "@/styles/components";
+import SenderFormModal from "@/components/modals/SenderFormModal.jsx";
+import DataListPage from "@/components/DataListPage";
+import { CardBody, Button } from "@/styles/components";
 import {
   SearchBar,
   RemitenteCard,
@@ -41,27 +18,14 @@ import {
   RemitenteName,
   RemitenteMeta,
   Actions,
-  ModalOverlay,
-  ModalCard,
-  FormGroup,
-  ErrorMsg,
   EmptyState,
 } from "./styles/sendersStyled";
-
-const INITIAL_FORM = {
-  name: "",
-  phone: "",
-  idDocument: "",
-  address: "",
-  notes: "",
-};
 
 export default function Senders() {
   const dispatch = useDispatch();
   const {
     items: senders,
     status,
-    saving,
     deleting,
   } = useSelector((state) => state.senders);
   const { user } = useSelector((state) => state.auth);
@@ -70,11 +34,8 @@ export default function Senders() {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(INITIAL_FORM);
-  const [errors, setErrors] = useState({});
   const [pendingDelete, setPendingDelete] = useState(null);
 
-  // Load senders on mount
   useEffect(() => {
     if (status === "idle") dispatch(fetchSenders());
     return () => dispatch(clearSendersError());
@@ -93,68 +54,17 @@ export default function Senders() {
   }, [senders, search]);
 
   const openCreate = useCallback(() => {
-    setForm(INITIAL_FORM);
-    setErrors({});
     setEditing(null);
     setModalOpen(true);
   }, []);
-
   const openEdit = useCallback((s) => {
-    setForm({
-      name: s.name,
-      phone: s.phone,
-      idDocument: s.id_document ?? "",
-      address: s.address ?? "",
-      notes: s.notes ?? "",
-    });
-    setErrors({});
     setEditing(s);
     setModalOpen(true);
   }, []);
-
   const closeModal = useCallback(() => {
     setModalOpen(false);
     setEditing(null);
-    setForm(INITIAL_FORM);
-    setErrors({});
   }, []);
-
-  const validate = () => {
-    const errs = {};
-    if (!form.name.trim()) errs.name = "Name is required";
-    if (!form.phone.trim() || form.phone.length < 6)
-      errs.phone = "Invalid phone number";
-    if (!form.idDocument.trim() || form.idDocument.length < 6)
-      errs.idDocument = "Invalid ID document";
-    if (!form.address.trim()) errs.address = "Address is required";
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
-
-    if (editing) {
-      const result = await dispatch(
-        updateSender({ id: editing.id, payload: form }),
-      );
-      if (updateSender.fulfilled.match(result)) {
-        toast.success("Sender updated successfully");
-        closeModal();
-      } else {
-        toast.error(result.payload?.message ?? "Error updating sender");
-      }
-    } else {
-      const result = await dispatch(createSender(form));
-      if (createSender.fulfilled.match(result)) {
-        toast.success("Sender created successfully");
-        closeModal();
-      } else {
-        toast.error(result.payload?.message ?? "Error creating sender");
-      }
-    }
-  };
 
   const handleDelete = async (id) => {
     if (pendingDelete === id) {
@@ -174,213 +84,87 @@ export default function Senders() {
     }
   };
 
-  const isLoading = status === "loading";
-
   return (
-    <PageWrapper>
-      <Flex
-        $justify="space-between"
-        $align="center"
-        $wrap
-        style={{ marginBottom: "0.25rem" }}
+    <>
+      <DataListPage
+        title="Gestión de Remitentes"
+        subtitle={`${filtered.length} remitente${filtered.length !== 1 ? "s" : ""} registrado${filtered.length !== 1 ? "s" : ""}`}
+        actionLabel="Nuevo Remitente"
+        onAction={openCreate}
+        searchPlaceholder="Buscar por nombre, teléfono o cédula…"
+        searchValue={search}
+        onSearchChange={setSearch}
+        SearchBarComponent={SearchBar}
+        loading={status === "loading"}
+        loadingText="Cargando remitentes…"
+        isEmpty={filtered.length === 0}
+        EmptyStateComponent={EmptyState}
+        emptyIcon={Users}
+        emptyTitle={search ? "Sin resultados" : "No hay remitentes"}
+        emptyDescription={
+          search
+            ? "Intenta con otros términos de búsqueda."
+            : "Agrega tu primer remitente para comenzar."
+        }
+        emptyActionLabel={!search ? "Nuevo Remitente" : undefined}
+        onEmptyAction={openCreate}
       >
-        <div>
-          <PageTitle>Gestión de Remitentes</PageTitle>
-          <PageSubtitle>
-            {filtered.length} remitente{filtered.length !== 1 ? "s" : ""}{" "}
-            registrado{filtered.length !== 1 ? "s" : ""}
-          </PageSubtitle>
-        </div>
-        <Button onClick={openCreate}>
-          <Plus size={16} /> Nuevo Remitente
-        </Button>
-      </Flex>
-
-      <SearchBar>
-        <Search size={16} />
-        <Input
-          placeholder="Buscar por nombre, teléfono o cédula…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </SearchBar>
-
-      {isLoading ? (
-        <Card>
-          <CardBody style={{ textAlign: "center", padding: "3rem" }}>
-            <p>Cargando remitentes…</p>
-          </CardBody>
-        </Card>
-      ) : filtered.length === 0 ? (
-        <Card>
-          <CardBody>
-            <EmptyState>
-              <Users size={40} />
-              <h3>{search ? "Sin resultados" : "No hay remitentes"}</h3>
-              <p>
-                {search
-                  ? "Intenta con otros términos de búsqueda."
-                  : "Agrega tu primer remitente para comenzar."}
-              </p>
-              {!search && (
-                <Button
-                  $variant="outline"
-                  onClick={openCreate}
-                  style={{ marginTop: "1rem" }}
-                >
-                  <Plus size={16} /> Nuevo Remitente
-                </Button>
-              )}
-            </EmptyState>
-          </CardBody>
-        </Card>
-      ) : (
-        <Grid $gap="0.75rem">
-          {filtered.map((s) => (
-            <RemitenteCard key={s.id}>
-              <CardBody>
-                <RemitenteRow>
-                  <RemitenteInfo>
-                    <RemitenteName>{s.name}</RemitenteName>
-                    <RemitenteMeta>
-                      <span>
-                        <IdCard size={12} /> {s.id_document}
-                      </span>
-                      <span>
-                        <Phone size={12} /> {s.phone}
-                      </span>
-                      {s.address && (
-                        <span>
-                          <MapPin size={12} /> {s.address}
-                        </span>
-                      )}
-                    </RemitenteMeta>
-                  </RemitenteInfo>
-                  <Actions>
-                    <Button
-                      $variant="ghost"
-                      $size="sm"
-                      onClick={() => openEdit(s)}
-                      title="Edit"
-                    >
-                      <Pencil size={14} />
-                    </Button>
-                    {isOwner && (
-                      <Button
-                        $variant={
-                          pendingDelete === s.id ? "destructive" : "ghost"
-                        }
-                        $size="sm"
-                        onClick={() => handleDelete(s.id)}
-                        disabled={deleting}
-                        title={
-                          pendingDelete === s.id ? "Confirm delete" : "Delete"
-                        }
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    )}
-                  </Actions>
-                </RemitenteRow>
-              </CardBody>
-            </RemitenteCard>
-          ))}
-        </Grid>
-      )}
-
-      {modalOpen && (
-        <ModalOverlay onClick={closeModal}>
-          <ModalCard onClick={(e) => e.stopPropagation()}>
-            <CardHeader>
-              <CardTitle>
-                {editing ? "Editar Remitente" : "Nuevo Remitente"}
-              </CardTitle>
-              <Button $variant="ghost" $size="sm" onClick={closeModal}>
-                <X size={16} />
-              </Button>
-            </CardHeader>
+        {filtered.map((s) => (
+          <RemitenteCard key={s.id}>
             <CardBody>
-              <form onSubmit={handleSubmit}>
-                <FormGroup>
-                  <Label htmlFor="name">Nombre *</Label>
-                  <Input
-                    id="name"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Ej: José Pérez"
-                  />
-                  {errors.name && <ErrorMsg>{errors.name}</ErrorMsg>}
-                </FormGroup>
-                <FormGroup>
-                  <Label htmlFor="phone">Teléfono *</Label>
-                  <Input
-                    id="phone"
-                    value={form.phone}
-                    onChange={(e) =>
-                      setForm({ ...form, phone: e.target.value })
-                    }
-                    placeholder="+1 (809) 555-0101"
-                  />
-                  {errors.phone && <ErrorMsg>{errors.phone}</ErrorMsg>}
-                </FormGroup>
-                <FormGroup>
-                  <Label htmlFor="idDocument">Cédula *</Label>
-                  <Input
-                    id="idDocument"
-                    value={form.idDocument}
-                    onChange={(e) =>
-                      setForm({ ...form, idDocument: e.target.value })
-                    }
-                    placeholder="402-1234567-8"
-                  />
-                  {errors.idDocument && (
-                    <ErrorMsg>{errors.idDocument}</ErrorMsg>
+              <RemitenteRow>
+                <RemitenteInfo>
+                  <RemitenteName>{s.name}</RemitenteName>
+                  <RemitenteMeta>
+                    <span>
+                      <IdCard size={12} /> {s.id_document}
+                    </span>
+                    <span>
+                      <Phone size={12} /> {s.phone}
+                    </span>
+                    {s.address && (
+                      <span>
+                        <MapPin size={12} /> {s.address}
+                      </span>
+                    )}
+                  </RemitenteMeta>
+                </RemitenteInfo>
+                <Actions>
+                  <Button
+                    $variant="ghost"
+                    $size="sm"
+                    onClick={() => openEdit(s)}
+                    title="Edit"
+                  >
+                    <Pencil size={14} />
+                  </Button>
+                  {isOwner && (
+                    <Button
+                      $variant={
+                        pendingDelete === s.id ? "destructive" : "ghost"
+                      }
+                      $size="sm"
+                      onClick={() => handleDelete(s.id)}
+                      disabled={deleting}
+                      title={
+                        pendingDelete === s.id ? "Confirm delete" : "Delete"
+                      }
+                    >
+                      <Trash2 size={14} />
+                    </Button>
                   )}
-                </FormGroup>
-                <FormGroup>
-                  <Label htmlFor="address">Dirección *</Label>
-                  <Input
-                    id="address"
-                    value={form.address}
-                    onChange={(e) =>
-                      setForm({ ...form, address: e.target.value })
-                    }
-                    placeholder="Calle Duarte #45, Santo Domingo"
-                  />
-                  {errors.address && <ErrorMsg>{errors.address}</ErrorMsg>}
-                </FormGroup>
-                <FormGroup>
-                  <Label htmlFor="notes">Notas</Label>
-                  <Input
-                    id="notes"
-                    value={form.notes}
-                    onChange={(e) =>
-                      setForm({ ...form, notes: e.target.value })
-                    }
-                    placeholder="Observaciones opcionales"
-                  />
-                </FormGroup>
-                <Flex
-                  $gap="0.5rem"
-                  $justify="flex-end"
-                  style={{ marginTop: "1rem" }}
-                >
-                  <Button type="button" $variant="outline" onClick={closeModal}>
-                    Cancelar
-                  </Button>
-                  <Button type="submit" disabled={saving}>
-                    {saving
-                      ? "Guardando…"
-                      : editing
-                        ? "Guardar Cambios"
-                        : "Crear Remitente"}
-                  </Button>
-                </Flex>
-              </form>
+                </Actions>
+              </RemitenteRow>
             </CardBody>
-          </ModalCard>
-        </ModalOverlay>
-      )}
-    </PageWrapper>
+          </RemitenteCard>
+        ))}
+      </DataListPage>
+
+      <SenderFormModal
+        open={modalOpen}
+        editing={editing}
+        onClose={closeModal}
+      />
+    </>
   );
 }

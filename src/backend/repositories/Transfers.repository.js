@@ -1,7 +1,16 @@
-import { supabase } from '@/lib/supabaseClient';
-
+import { supabase } from "@/lib/supabaseClient";
 
 export const transfersRepository = {
+  async getAll(filters = {}) {
+    const { data, error } = await supabase.rpc("get_transfers", {
+      p_status: filters.status || null,
+      p_date_from: filters.dateFrom || null,
+      p_date_to: filters.dateTo || null,
+    });
+    if (error) throw error;
+    return data ?? [];
+  },
+
   async create(payload) {
     const { data, error } = await supabase.rpc("create_transfer", {
       p_sender_id: payload.senderId,
@@ -13,6 +22,14 @@ export const transfersRepository = {
       p_payment_method: payload.paymentMethod,
       p_fee: payload.fee ?? 0,
       p_notes: payload.notes ?? null,
+    });
+    if (error) throw error;
+    return data?.[0] ?? null;
+  },
+
+  async getReceipt(id) {
+    const { data, error } = await supabase.rpc("get_transfer_receipt", {
+      p_id: id,
     });
     if (error) throw error;
     return data?.[0] ?? null;

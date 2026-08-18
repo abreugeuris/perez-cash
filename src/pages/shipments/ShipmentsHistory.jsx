@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -25,30 +26,29 @@ import {
   StatusBadge,
   EmptyWrap,
 } from "./styles/shipmentsHistoryStyle.js";
-import { toast } from "sonner";
-// import { shipmentsController } from "@/backend/controllers/shipmentsController";
-// import { sendersController } from "@/backend/controllers/sendersController";
-// import { beneficiariesController } from "@/backend/controllers/beneficiariesController";
+import {
+  fetchTransfers,
+  clearTransfersError,
+} from "@/store/slices/transfersSlice";
+
+import ReceiptPreviewModal from "@/components/modals/ReceiptPreviewModal.jsx";
+
 import {
   PageWrapper,
   PageTitle,
   PageSubtitle,
   Card,
-  CardHeader,
-  CardTitle,
   CardBody,
   Button,
   Input,
-  Label,
-  Badge,
   Flex,
-  Grid,
 } from "@/styles/components";
 import {
   Search,
   ArrowUpDown,
   Send,
   Eye,
+  Printer,
   Inbox,
   ArrowRightLeft,
   Calendar,
@@ -56,55 +56,101 @@ import {
   Users,
 } from "lucide-react";
 
-const ESTADO_LABELS = {
-  completado: "Completado",
-  pendiente: "Pendiente",
-  cancelado: "Cancelado",
+const STATUS_TO_BADGE_KEY = {
+  pending: "pendiente",
+  completed: "completado",
+  cancelled: "cancelado",
 };
+
+const STATUS_LABELS = {
+  pending: "Pendiente",
+  completed: "Completado",
+  cancelled: "Cancelado",
+};
+
+const MAX_RANGE_DAYS = 90; // debe coincidir con el límite del RPC get_transfers
+
+function toISODate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(isoDateStr, days) {
+  const d = new Date(`${isoDateStr}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+}
+
+const TODAY_STR = toISODate(new Date());
+const DEFAULT_FROM_STR = addDays(TODAY_STR, -MAX_RANGE_DAYS);
 
 export default function ShipmentsHistory() {
   const navigate = useNavigate();
-  const [envios] = useState([]);
-  const [remitentes] = useState([]);
-  const [beneficiarios] = useState([]);
+  const dispatch = useDispatch();
+  const { items: transfers, status, error } = useSelector((s) => s.transfers);
 
   const [estadoFilter, setEstadoFilter] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(DEFAULT_FROM_STR);
+  const [dateTo, setDateTo] = useState(TODAY_STR);
   const [sortAsc, setSortAsc] = useState(false);
+  const [reprintTarget, setReprintTarget] = useState(null);
 
-  const getName = (type, id) => {
-    if (type === "remitente") {
-      const r = remitentes.find((x) => x.id === id);
-      return r ? `${r.nombre} ${r.apellido}` : "—";
-    }
-    const b = beneficiarios.find((x) => x.id === id);
-    return b ? `${b.nombre} ${b.apellido}` : "—";
-  };
+  // El status y el rango de fechas ahora los filtra el RPC del lado
+  // del servidor — cualquier cambio en ellos dispara un nuevo fetch.
+  // (La búsqueda por nombre/referencia sigue siendo client-side sobre
+  // ese subconjunto ya filtrado, para no pegarle al RPC en cada tecla.)
+  useEffect(() => {
+    dispatch(
+      fetchTransfers({
+        status: estadoFilter || undefined,
+        dateFrom,
+        dateTo,
+      }),
+    );
+    return () => dispatch(clearTransfersError());
+  }, [dispatch, estadoFilter, dateFrom, dateTo]);
+
+  // Límites nativos del <input type="date">: el navegador ya no deja
+  // que el usuario ABRA el calendario y elija un día fuera de rango,
+  // en vez de dejarlo elegir y corregirlo después.
+  //
+  // "Fecha desde" no puede quedar a más de 90 días ANTES de "Fecha hasta".
+  const dateFromMin = dateTo ? addDays(dateTo, -MAX_RANGE_DAYS) : undefined;
+  const dateFromMax = dateTo || TODAY_STR;
+
+  // "Fecha hasta" no puede ser ni anterior a "Fecha desde" ni quedar
+  // a más de 90 días DESPUÉS — ni tampoco superar hoy.
+  const dateToMin = dateFrom || undefined;
+  const dateToMax = dateFrom
+    ? [addDays(dateFrom, MAX_RANGE_DAYS), TODAY_STR].sort()[0] // el menor de los dos límites
+    : TODAY_STR;
 
   const filteredEnvios = useMemo(() => {
-    let result = [...envios];
-    if (estadoFilter) result = result.filter((e) => e.estado === estadoFilter);
+    let result = [...transfers];
+
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
       result = result.filter((e) => {
-        const remName = getName("remitente", e.remitenteId).toLowerCase();
-        const benName = getName("beneficiario", e.beneficiarioId).toLowerCase();
-        return remName.includes(term) || benName.includes(term);
+        const remName = (e.sender_name ?? "").toLowerCase();
+        const benName = (e.beneficiary_name ?? "").toLowerCase();
+        const ref = (e.reference_number ?? "").toLowerCase();
+        return (
+          remName.includes(term) || benName.includes(term) || ref.includes(term)
+        );
       });
     }
-    if (dateFrom) result = result.filter((e) => e.fecha >= dateFrom);
-    if (dateTo) {
-      const toEnd = dateTo + "T23:59:59.999Z";
-      result = result.filter((e) => e.fecha <= toEnd);
-    }
+
     result.sort((a, b) => {
-      const cmp = new Date(b.fecha).getTime() - new Date(a.fecha).getTime();
+      const cmp =
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       return sortAsc ? -cmp : cmp;
     });
+
     return result;
-  }, [envios, estadoFilter, searchTerm, dateFrom, dateTo, sortAsc]);
+  }, [transfers, searchTerm, sortAsc]);
+
+  const isLoading = status === "loading";
+  const hasExtraFilters = searchTerm || estadoFilter;
 
   return (
     <PageWrapper>
@@ -147,7 +193,7 @@ export default function ShipmentsHistory() {
               />
               <Input
                 style={{ paddingLeft: "2rem", fontSize: "0.8rem" }}
-                placeholder="Buscar por nombre..."
+                placeholder="Buscar por nombre o referencia..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -157,21 +203,25 @@ export default function ShipmentsHistory() {
               onChange={(e) => setEstadoFilter(e.target.value)}
             >
               <option value="">Todos los estados</option>
-              <option value="completado">Completado</option>
-              <option value="pendiente">Pendiente</option>
-              <option value="cancelado">Cancelado</option>
+              <option value="completed">Completado</option>
+              <option value="pending">Pendiente</option>
+              <option value="cancelled">Cancelado</option>
             </StyledSelect>
             <StyledDate
               type="date"
               value={dateFrom}
+              min={dateFromMin}
+              max={dateFromMax}
               onChange={(e) => setDateFrom(e.target.value)}
-              title="Fecha desde"
+              title="Fecha desde (máx. 3 meses de rango)"
             />
             <StyledDate
               type="date"
               value={dateTo}
+              min={dateToMin}
+              max={dateToMax}
               onChange={(e) => setDateTo(e.target.value)}
-              title="Fecha hasta"
+              title="Fecha hasta (máx. 3 meses de rango)"
             />
             <Button
               $variant={sortAsc ? "accent" : "ghost"}
@@ -182,21 +232,51 @@ export default function ShipmentsHistory() {
               <ArrowUpDown size={14} />
             </Button>
           </Flex>
+          <p
+            style={{
+              fontSize: "0.7rem",
+              color: "var(--color-muted-fg)",
+              marginTop: "0.4rem",
+            }}
+          >
+            El rango de fechas no puede superar 3 meses.
+          </p>
         </CardBody>
       </FiltersBar>
 
-      {filteredEnvios.length === 0 ? (
+      {error && (
+        <Card
+          style={{
+            marginBottom: "1rem",
+            borderColor: "var(--color-destructive)",
+          }}
+        >
+          <CardBody
+            style={{ color: "var(--color-destructive)", fontSize: "0.85rem" }}
+          >
+            {error}
+          </CardBody>
+        </Card>
+      )}
+
+      {isLoading ? (
+        <Card>
+          <CardBody style={{ textAlign: "center", padding: "3rem" }}>
+            <p>Cargando envíos…</p>
+          </CardBody>
+        </Card>
+      ) : filteredEnvios.length === 0 ? (
         <Card>
           <CardBody>
             <EmptyWrap>
               <Inbox size={48} />
               <h3>Sin envíos</h3>
               <p>
-                {searchTerm || estadoFilter || dateFrom || dateTo
+                {hasExtraFilters
                   ? "No se encontraron envíos con los filtros actuales."
-                  : "Aún no hay remesas registradas."}
+                  : "Aún no hay remesas registradas en este rango de fechas."}
               </p>
-              {!searchTerm && !estadoFilter && !dateFrom && !dateTo && (
+              {!hasExtraFilters && (
                 <Button
                   $variant="accent"
                   $size="lg"
@@ -244,13 +324,13 @@ export default function ShipmentsHistory() {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            RF-{envio.id.replace("env_", "")}
+                            {envio.reference_number}
                           </td>
                           <td style={{ fontWeight: 500, whiteSpace: "nowrap" }}>
-                            {getName("remitente", envio.remitenteId)}
+                            {envio.sender_name}
                           </td>
                           <td style={{ fontWeight: 500, whiteSpace: "nowrap" }}>
-                            {getName("beneficiario", envio.beneficiarioId)}
+                            {envio.beneficiary_name}
                           </td>
                           <td
                             style={{
@@ -260,23 +340,24 @@ export default function ShipmentsHistory() {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            RD${" "}
-                            {envio.montoEnviado.toLocaleString("es-DO", {
-                              minimumFractionDigits: 2,
-                            })}
-                          </td>
-                          <td
-                            style={{
-                              textAlign: "right",
-                              fontFamily: "'DM Mono', monospace",
-                              fontSize: "0.7rem",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {envio.montoRecibido.toLocaleString("es-DO", {
+                            {Number(envio.amount_sent).toLocaleString("es-DO", {
                               minimumFractionDigits: 2,
                             })}{" "}
-                            HTG
+                            {envio.from_currency}
+                          </td>
+                          <td
+                            style={{
+                              textAlign: "right",
+                              fontFamily: "'DM Mono', monospace",
+                              fontSize: "0.7rem",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {Number(envio.amount_received).toLocaleString(
+                              "es-DO",
+                              { minimumFractionDigits: 2 },
+                            )}{" "}
+                            {envio.to_currency}
                           </td>
                           <td
                             style={{
@@ -284,8 +365,13 @@ export default function ShipmentsHistory() {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            <StatusBadge $estado={envio.estado}>
-                              {ESTADO_LABELS[envio.estado] || envio.estado}
+                            <StatusBadge
+                              $estado={
+                                STATUS_TO_BADGE_KEY[envio.status] ??
+                                envio.status
+                              }
+                            >
+                              {STATUS_LABELS[envio.status] ?? envio.status}
                             </StatusBadge>
                           </td>
                           <td
@@ -296,15 +382,39 @@ export default function ShipmentsHistory() {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {format(new Date(envio.fecha), "dd/MM/yy HH:mm", {
-                              locale: es,
-                            })}
+                            {format(
+                              new Date(envio.created_at),
+                              "dd/MM/yy HH:mm",
+                              { locale: es },
+                            )}
                           </td>
-                          <td style={{ textAlign: "center" }}>
-                            <Eye
-                              size={14}
-                              style={{ color: "var(--color-muted-fg)" }}
-                            />
+                          <td
+                            style={{
+                              textAlign: "center",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <Flex
+                              $gap="0.5rem"
+                              $align="center"
+                              $justify="flex-end"
+                            >
+                              <Button
+                                $variant="ghost"
+                                $size="sm"
+                                title="Reimprimir recibo"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReprintTarget(envio);
+                                }}
+                              >
+                                <Printer size={14} />
+                              </Button>
+                              <Eye
+                                size={14}
+                                style={{ color: "var(--color-muted-fg)" }}
+                              />
+                            </Flex>
                           </td>
                         </tr>
                       ))}
@@ -324,9 +434,13 @@ export default function ShipmentsHistory() {
               >
                 <CardBody>
                   <CardTop>
-                    <ReciboBadge>RF-{envio.id.replace("env_", "")}</ReciboBadge>
-                    <StatusBadge $estado={envio.estado}>
-                      {ESTADO_LABELS[envio.estado] || envio.estado}
+                    <ReciboBadge>{envio.reference_number}</ReciboBadge>
+                    <StatusBadge
+                      $estado={
+                        STATUS_TO_BADGE_KEY[envio.status] ?? envio.status
+                      }
+                    >
+                      {STATUS_LABELS[envio.status] ?? envio.status}
                     </StatusBadge>
                   </CardTop>
 
@@ -334,16 +448,12 @@ export default function ShipmentsHistory() {
                     <PersonRow>
                       <User size={14} />
                       <span className="label">De:</span>
-                      <span className="name">
-                        {getName("remitente", envio.remitenteId)}
-                      </span>
+                      <span className="name">{envio.sender_name}</span>
                     </PersonRow>
                     <PersonRow>
                       <Users size={14} />
                       <span className="label">Para:</span>
-                      <span className="name">
-                        {getName("beneficiario", envio.beneficiarioId)}
-                      </span>
+                      <span className="name">{envio.beneficiary_name}</span>
                     </PersonRow>
                   </CardPeople>
 
@@ -351,10 +461,10 @@ export default function ShipmentsHistory() {
                     <MontoBlock>
                       <MontoLabel>Enviado</MontoLabel>
                       <MontoValue>
-                        RD${" "}
-                        {envio.montoEnviado.toLocaleString("es-DO", {
+                        {Number(envio.amount_sent).toLocaleString("es-DO", {
                           minimumFractionDigits: 2,
-                        })}
+                        })}{" "}
+                        {envio.from_currency}
                       </MontoValue>
                     </MontoBlock>
                     <MontoArrow>
@@ -363,10 +473,10 @@ export default function ShipmentsHistory() {
                     <MontoBlock>
                       <MontoLabel>Recibido</MontoLabel>
                       <MontoValue>
-                        {envio.montoRecibido.toLocaleString("es-DO", {
+                        {Number(envio.amount_received).toLocaleString("es-DO", {
                           minimumFractionDigits: 2,
                         })}{" "}
-                        HTG
+                        {envio.to_currency}
                       </MontoValue>
                     </MontoBlock>
                   </CardMontoRow>
@@ -374,11 +484,24 @@ export default function ShipmentsHistory() {
                   <CardFooter>
                     <CardDate>
                       <Calendar size={12} />
-                      {format(new Date(envio.fecha), "d MMM, HH:mm", {
+                      {format(new Date(envio.created_at), "d MMM, HH:mm", {
                         locale: es,
                       })}
                     </CardDate>
-                    <Eye size={15} style={{ color: "var(--color-muted-fg)" }} />
+                    <Flex $gap="0.6rem" $align="center">
+                      <Printer
+                        size={15}
+                        style={{ color: "var(--color-muted-fg)" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setReprintTarget(envio);
+                        }}
+                      />
+                      <Eye
+                        size={15}
+                        style={{ color: "var(--color-muted-fg)" }}
+                      />
+                    </Flex>
                   </CardFooter>
                 </CardBody>
               </EnvioCard>
@@ -386,6 +509,12 @@ export default function ShipmentsHistory() {
           </MobileCards>
         </>
       )}
+
+      <ReceiptPreviewModal
+        open={!!reprintTarget}
+        receipt={reprintTarget}
+        onClose={() => setReprintTarget(null)}
+      />
     </PageWrapper>
   );
 }
