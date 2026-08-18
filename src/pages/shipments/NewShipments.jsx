@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { useDispatch, useSelector } from "react-redux";
@@ -30,16 +30,15 @@ import {
   Select,
   Label,
   Flex,
-  Grid,
   Divider,
 } from "@/styles/components";
-import { fetchSenders, createSender } from "@/store/slices/sendersSlice";
-import {
-  fetchBeneficiaries,
-  createBeneficiary,
-} from "@/store/slices/beneficiariesSlice";
+import { fetchSenders } from "@/store/slices/sendersSlice";
+import { fetchBeneficiaries } from "@/store/slices/beneficiariesSlice";
 import { fetchRates } from "@/store/slices/ratesSlice";
 import { createTransfer } from "@/store/slices/transfersSlice";
+import SenderFormModal from "@/components/modals/SenderFormModal";
+import BeneficiaryFormModal from "@/components/modals/BeneficiaryFormModal";
+import ReceiptPreviewModal from "@/components/modals/ReceiptPreviewModal";
 
 const PAYMENT_METHODS = [
   "Efectivo",
@@ -53,6 +52,9 @@ function formatAmount(amount, currency) {
 
 export default function NewShipment() {
   const dispatch = useDispatch();
+  // navigate queda disponible por si en el modal de preview agregas
+  // un botón "Ver historial completo" u otro redirect a futuro.
+  // eslint-disable-next-line no-unused-vars
   const navigate = useNavigate();
 
   const { items: senders, status: sendersStatus } = useSelector(
@@ -66,7 +68,6 @@ export default function NewShipment() {
 
   const activeRates = useMemo(() => rates.filter((r) => r.active), [rates]);
 
-  // Cargar catálogos solo si aún no están en Redux
   useEffect(() => {
     if (sendersStatus === "idle") dispatch(fetchSenders());
     if (beneficiariesStatus === "idle") dispatch(fetchBeneficiaries());
@@ -81,35 +82,28 @@ export default function NewShipment() {
     [activeRates],
   );
 
+  const [senderModalOpen, setSenderModalOpen] = useState(false);
+  const [beneficiaryModalOpen, setBeneficiaryModalOpen] = useState(false);
+  const [receiptPreview, setReceiptPreview] = useState(null);
+
   const {
     register,
     handleSubmit,
     watch,
     setValue,
     setError,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm({
     defaultValues: {
-      senderMode: "select",
       senderId: "",
-      senderName: "",
-      senderPhone: "",
-      senderIdDocument: "",
-      senderAddress: "",
-      beneficiaryMode: "select",
       beneficiaryId: "",
-      beneficiaryName: "",
-      beneficiaryPhone: "",
-      beneficiaryCountry: "Haití",
-      beneficiaryNotes: "",
       paymentMethod: "",
       rateId: defaultRateId,
       amountSent: "",
     },
   });
 
-  const senderMode = watch("senderMode");
-  const beneficiaryMode = watch("beneficiaryMode");
   const selectedSenderId = watch("senderId");
   const selectedBeneficiaryId = watch("beneficiaryId");
   const selectedRateId = watch("rateId");
@@ -135,63 +129,16 @@ export default function NewShipment() {
     return amt * selectedRate.rate;
   }, [amountSent, selectedRate]);
 
-  const switchSenderMode = (mode) => {
-    setValue("senderMode", mode);
-    if (mode === "select") {
-      setValue("senderName", "");
-      setValue("senderPhone", "");
-      setValue("senderIdDocument", "");
-      setValue("senderAddress", "");
-    } else {
-      setValue("senderId", "");
-    }
-  };
-
-  const switchBeneficiaryMode = (mode) => {
-    setValue("beneficiaryMode", mode);
-    if (mode === "select") {
-      setValue("beneficiaryName", "");
-      setValue("beneficiaryPhone", "");
-      setValue("beneficiaryCountry", "Haití");
-      setValue("beneficiaryNotes", "");
-    } else {
-      setValue("beneficiaryId", "");
-    }
-  };
-
   const onSubmit = async (data) => {
-    // ── Validaciones manuales (equivalentes a las reglas de Senders/Recipient) ──
-    if (data.senderMode === "select" && !data.senderId) {
-      setError("senderId", { message: "Seleccione un remitente existente" });
+    if (!data.senderId) {
+      setError("senderId", { message: "Seleccione o cree un remitente" });
       return;
     }
-    if (data.senderMode === "create") {
-      if (!data.senderName?.trim())
-        return setError("senderName", { message: "Requerido" });
-      if (!data.senderPhone?.trim() || data.senderPhone.trim().length < 6)
-        return setError("senderPhone", { message: "Teléfono inválido" });
-      if (
-        !data.senderIdDocument?.trim() ||
-        data.senderIdDocument.trim().length < 6
-      )
-        return setError("senderIdDocument", { message: "Cédula inválida" });
-    }
-    if (data.beneficiaryMode === "select" && !data.beneficiaryId) {
+    if (!data.beneficiaryId) {
       setError("beneficiaryId", {
-        message: "Seleccione un beneficiario existente",
+        message: "Seleccione o cree un beneficiario",
       });
       return;
-    }
-    if (data.beneficiaryMode === "create") {
-      if (!data.beneficiaryName?.trim())
-        return setError("beneficiaryName", { message: "Requerido" });
-      if (
-        !data.beneficiaryPhone?.trim() ||
-        data.beneficiaryPhone.trim().length < 6
-      )
-        return setError("beneficiaryPhone", { message: "Teléfono inválido" });
-      if (!data.beneficiaryCountry?.trim())
-        return setError("beneficiaryCountry", { message: "Requerido" });
     }
     if (!data.paymentMethod) {
       setError("paymentMethod", { message: "Seleccione un método de pago" });
@@ -207,71 +154,53 @@ export default function NewShipment() {
       return;
     }
 
-    try {
-      // 1. Resolver sender_id — crear primero si es "Nuevo"
-      let senderId = data.senderId;
-      if (data.senderMode === "create") {
-        const result = await dispatch(
-          createSender({
-            name: data.senderName.trim(),
-            phone: data.senderPhone.trim(),
-            idDocument: data.senderIdDocument.trim(),
-            address: (data.senderAddress || "").trim(),
-          }),
-        );
-        if (!createSender.fulfilled.match(result)) {
-          toast.error(result.payload?.message ?? "Error al crear el remitente");
-          return;
-        }
-        senderId = result.payload.id;
-        // El select de "Remitentes" ya se actualizó solo, porque
-        // createSender.fulfilled empuja el nuevo registro a state.senders.items.
-      }
+    const result = await dispatch(
+      createTransfer({
+        senderId: data.senderId,
+        beneficiaryId: data.beneficiaryId,
+        fromCurrency: selectedRate.from_currency,
+        toCurrency: selectedRate.to_currency,
+        amountSent: amountVal,
+        appliedRate: selectedRate.rate,
+        paymentMethod: data.paymentMethod,
+      }),
+    );
 
-      // 2. Resolver beneficiary_id — igual que arriba
-      let beneficiaryId = data.beneficiaryId;
-      if (data.beneficiaryMode === "create") {
-        const result = await dispatch(
-          createBeneficiary({
-            name: data.beneficiaryName.trim(),
-            phone: data.beneficiaryPhone.trim(),
-            country: (data.beneficiaryCountry || "Haití").trim(),
-            notes: (data.beneficiaryNotes || "").trim(),
-          }),
-        );
-        if (!createBeneficiary.fulfilled.match(result)) {
-          toast.error(
-            result.payload?.message ?? "Error al crear el beneficiario",
-          );
-          return;
-        }
-        beneficiaryId = result.payload.id;
-      }
+    if (createTransfer.fulfilled.match(result)) {
+      toast.success("Envío registrado correctamente");
 
-      // 3. Crear el envío referenciando ambos ids
-      const transferResult = await dispatch(
-        createTransfer({
-          senderId,
-          beneficiaryId,
-          fromCurrency: selectedRate.from_currency,
-          toCurrency: selectedRate.to_currency,
-          amountSent: amountVal,
-          appliedRate: selectedRate.rate,
-          paymentMethod: data.paymentMethod,
-        }),
-      );
-
-      if (createTransfer.fulfilled.match(transferResult)) {
-        toast.success("Envío registrado correctamente");
-        navigate(`/envios/${transferResult.payload.id}/recibo`);
-      } else {
-        toast.error(
-          transferResult.payload?.message ?? "Error al registrar el envío",
-        );
-      }
-    } catch (err) {
-      toast.error("Ocurrió un error inesperado");
+      // Armamos el recibo en memoria combinando la respuesta del
+      // transfer con el sender/beneficiary ya seleccionados en el
+      // form — evita un segundo round-trip a Supabase solo para
+      // mostrar el preview inmediato.
+      const t = result.payload;
+      setReceiptPreview({
+        reference_number: t.reference_number,
+        created_at: t.created_at,
+        status: t.status,
+        sender_name: selectedSender?.name,
+        sender_phone: selectedSender?.phone,
+        sender_id_document: selectedSender?.id_document,
+        beneficiary_name: selectedBeneficiary?.name,
+        beneficiary_phone: selectedBeneficiary?.phone,
+        beneficiary_country: selectedBeneficiary?.country,
+        amount_sent: t.amount_sent,
+        applied_rate: t.applied_rate,
+        fee: t.fee,
+        amount_received: t.amount_received,
+        from_currency: t.from_currency,
+        to_currency: t.to_currency,
+        payment_method: t.payment_method,
+      });
+    } else {
+      toast.error(result.payload?.message ?? "Error al registrar el envío");
     }
+  };
+
+  const closeReceiptPreview = () => {
+    setReceiptPreview(null);
+    // Deja el form listo para registrar el siguiente envío.
+    reset();
   };
 
   return (
@@ -284,126 +213,74 @@ export default function NewShipment() {
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <TwoCol>
-          {/* ═══ LEFT: Remitente ═══ */}
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                <Flex $gap="0.5rem" $align="center">
-                  <StepBadge>1</StepBadge>
-                  Remitente
-                </Flex>
-              </CardTitle>
-            </CardHeader>
-            <CardBody>
-              <ModeToggle>
-                <ModeBtn
-                  $active={senderMode === "select"}
-                  type="button"
-                  onClick={() => switchSenderMode("select")}
-                >
-                  Seleccionar existente
-                </ModeBtn>
-                <ModeBtn
-                  $active={senderMode === "create"}
-                  type="button"
-                  onClick={() => switchSenderMode("create")}
-                >
-                  <UserPlus size={12} /> Nuevo
-                </ModeBtn>
-              </ModeToggle>
-
-              {senderMode === "select" ? (
-                <>
-                  <FormGroup>
-                    <Label>Remitente</Label>
-                    <Select
-                      value={selectedSenderId}
-                      onChange={(e) => setValue("senderId", e.target.value)}
-                    >
-                      <option value="">— Seleccione un remitente —</option>
-                      {senders.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} — {s.phone}
-                        </option>
-                      ))}
-                    </Select>
-                    {errors.senderId && (
-                      <FieldError>{errors.senderId.message}</FieldError>
-                    )}
-                  </FormGroup>
-                  {selectedSender && (
-                    <SelectedInfo>
-                      <p>
-                        <span className="label">Nombre: </span>
-                        <span className="value">{selectedSender.name}</span>
-                      </p>
-                      <p>
-                        <span className="label">Teléfono: </span>
-                        <span className="value">{selectedSender.phone}</span>
-                      </p>
-                      <p>
-                        <span className="label">Cédula: </span>
-                        <span className="value">
-                          {selectedSender.id_document}
-                        </span>
-                      </p>
-                      {selectedSender.address && (
-                        <p>
-                          <span className="label">Dirección: </span>
-                          <span className="value">
-                            {selectedSender.address}
-                          </span>
-                        </p>
-                      )}
-                    </SelectedInfo>
-                  )}
-                </>
-              ) : (
-                <>
-                  <FormGroup>
-                    <Label>Nombre completo *</Label>
-                    <Input
-                      {...register("senderName")}
-                      placeholder="Ej: José Pérez"
-                    />
-                    {errors.senderName && (
-                      <FieldError>{errors.senderName.message}</FieldError>
-                    )}
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Teléfono *</Label>
-                    <Input
-                      {...register("senderPhone")}
-                      placeholder="+1 (809) 555-0101"
-                    />
-                    {errors.senderPhone && (
-                      <FieldError>{errors.senderPhone.message}</FieldError>
-                    )}
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Cédula / Pasaporte *</Label>
-                    <Input
-                      {...register("senderIdDocument")}
-                      placeholder="402-1234567-8"
-                    />
-                    {errors.senderIdDocument && (
-                      <FieldError>{errors.senderIdDocument.message}</FieldError>
-                    )}
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Dirección</Label>
-                    <Input
-                      {...register("senderAddress")}
-                      placeholder="Calle, número, ciudad"
-                    />
-                  </FormGroup>
-                </>
-              )}
-            </CardBody>
-          </Card>
-
-          {/* ═══ RIGHT: Beneficiario + Montos ═══ */}
+          {/* ═══ LEFT: Remitente + Beneficiario, misma columna ═══ */}
           <RightCol>
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <Flex $gap="0.5rem" $align="center">
+                    <StepBadge>1</StepBadge>
+                    Remitente
+                  </Flex>
+                </CardTitle>
+              </CardHeader>
+              <CardBody>
+                <ModeToggle>
+                  <ModeBtn $active type="button" disabled>
+                    Seleccionar existente
+                  </ModeBtn>
+                  <ModeBtn
+                    type="button"
+                    onClick={() => setSenderModalOpen(true)}
+                  >
+                    <UserPlus size={12} /> Nuevo
+                  </ModeBtn>
+                </ModeToggle>
+
+                <FormGroup>
+                  <Label>Remitente</Label>
+                  <Select
+                    value={selectedSenderId}
+                    onChange={(e) => setValue("senderId", e.target.value)}
+                  >
+                    <option value="">— Seleccione un remitente —</option>
+                    {senders.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} — {s.phone}
+                      </option>
+                    ))}
+                  </Select>
+                  {errors.senderId && (
+                    <FieldError>{errors.senderId.message}</FieldError>
+                  )}
+                </FormGroup>
+                {selectedSender && (
+                  <SelectedInfo>
+                    <p>
+                      <span className="label">Nombre: </span>
+                      <span className="value">{selectedSender.name}</span>
+                    </p>
+                    <p>
+                      <span className="label">Teléfono: </span>
+                      <span className="value">{selectedSender.phone}</span>
+                    </p>
+                    <p>
+                      <span className="label">Cédula: </span>
+                      <span className="value">
+                        {selectedSender.id_document}
+                      </span>
+                    </p>
+                    {selectedSender.address && (
+                      <p>
+                        <span className="label">Dirección: </span>
+                        <span className="value">{selectedSender.address}</span>
+                      </p>
+                    )}
+                  </SelectedInfo>
+                )}
+              </CardBody>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>
@@ -415,118 +292,58 @@ export default function NewShipment() {
               </CardHeader>
               <CardBody>
                 <ModeToggle>
-                  <ModeBtn
-                    $active={beneficiaryMode === "select"}
-                    type="button"
-                    onClick={() => switchBeneficiaryMode("select")}
-                  >
+                  <ModeBtn $active type="button" disabled>
                     Seleccionar existente
                   </ModeBtn>
                   <ModeBtn
-                    $active={beneficiaryMode === "create"}
                     type="button"
-                    onClick={() => switchBeneficiaryMode("create")}
+                    onClick={() => setBeneficiaryModalOpen(true)}
                   >
                     <UserPlus size={12} /> Nuevo
                   </ModeBtn>
                 </ModeToggle>
 
-                {beneficiaryMode === "select" ? (
-                  <>
-                    <FormGroup>
-                      <Label>Beneficiario</Label>
-                      <Select
-                        value={selectedBeneficiaryId}
-                        onChange={(e) =>
-                          setValue("beneficiaryId", e.target.value)
-                        }
-                      >
-                        <option value="">— Seleccione un beneficiario —</option>
-                        {beneficiaries.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.name} — {b.phone} ({b.country})
-                          </option>
-                        ))}
-                      </Select>
-                      {errors.beneficiaryId && (
-                        <FieldError>{errors.beneficiaryId.message}</FieldError>
-                      )}
-                    </FormGroup>
-                    {selectedBeneficiary && (
-                      <SelectedInfo>
-                        <p>
-                          <span className="label">Nombre: </span>
-                          <span className="value">
-                            {selectedBeneficiary.name}
-                          </span>
-                        </p>
-                        <p>
-                          <span className="label">Teléfono: </span>
-                          <span className="value">
-                            {selectedBeneficiary.phone}
-                          </span>
-                        </p>
-                        <p>
-                          <span className="label">País: </span>
-                          <span className="value">
-                            {selectedBeneficiary.country}
-                          </span>
-                        </p>
-                      </SelectedInfo>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <FormGroup>
-                      <Label>Nombre completo *</Label>
-                      <Input
-                        {...register("beneficiaryName")}
-                        placeholder="Ej: Jean Baptiste"
-                      />
-                      {errors.beneficiaryName && (
-                        <FieldError>
-                          {errors.beneficiaryName.message}
-                        </FieldError>
-                      )}
-                    </FormGroup>
-                    <FormGroup>
-                      <Label>Teléfono *</Label>
-                      <Input
-                        {...register("beneficiaryPhone")}
-                        placeholder="+509 4444-1100"
-                      />
-                      {errors.beneficiaryPhone && (
-                        <FieldError>
-                          {errors.beneficiaryPhone.message}
-                        </FieldError>
-                      )}
-                    </FormGroup>
-                    <Grid $cols={2} $gap="0.6rem">
-                      <FormGroup>
-                        <Label>País *</Label>
-                        <Input
-                          {...register("beneficiaryCountry")}
-                          placeholder="Haití"
-                        />
-                        {errors.beneficiaryCountry && (
-                          <FieldError>
-                            {errors.beneficiaryCountry.message}
-                          </FieldError>
-                        )}
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>Notas</Label>
-                        <Input
-                          {...register("beneficiaryNotes")}
-                          placeholder="Dirección u observaciones"
-                        />
-                      </FormGroup>
-                    </Grid>
-                  </>
+                <FormGroup>
+                  <Label>Beneficiario</Label>
+                  <Select
+                    value={selectedBeneficiaryId}
+                    onChange={(e) => setValue("beneficiaryId", e.target.value)}
+                  >
+                    <option value="">— Seleccione un beneficiario —</option>
+                    {beneficiaries.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} — {b.phone} ({b.country})
+                      </option>
+                    ))}
+                  </Select>
+                  {errors.beneficiaryId && (
+                    <FieldError>{errors.beneficiaryId.message}</FieldError>
+                  )}
+                </FormGroup>
+                {selectedBeneficiary && (
+                  <SelectedInfo>
+                    <p>
+                      <span className="label">Nombre: </span>
+                      <span className="value">{selectedBeneficiary.name}</span>
+                    </p>
+                    <p>
+                      <span className="label">Teléfono: </span>
+                      <span className="value">{selectedBeneficiary.phone}</span>
+                    </p>
+                    <p>
+                      <span className="label">País: </span>
+                      <span className="value">
+                        {selectedBeneficiary.country}
+                      </span>
+                    </p>
+                  </SelectedInfo>
                 )}
               </CardBody>
             </Card>
+          </RightCol>
 
+          {/* ═══ RIGHT: Montos y Tasa ═══ */}
+          <RightCol>
             <Card>
               <CardHeader>
                 <CardTitle>
@@ -624,6 +441,39 @@ export default function NewShipment() {
           </RightCol>
         </TwoCol>
       </form>
+
+      {/* Mismos modales que usan Senders.jsx y Recipient.jsx.
+          onSuccess selecciona automáticamente el registro recién creado. */}
+      <SenderFormModal
+        open={senderModalOpen}
+        editing={null}
+        onClose={() => setSenderModalOpen(false)}
+        onSuccess={(sender) =>
+          setValue("senderId", sender.id, {
+            shouldValidate: true,
+            shouldDirty: true,
+            shouldTouch: true,
+          })
+        }
+      />
+      <BeneficiaryFormModal
+        open={beneficiaryModalOpen}
+        editing={null}
+        onClose={() => setBeneficiaryModalOpen(false)}
+        onSuccess={(beneficiary) =>
+          setValue("beneficiaryId", beneficiary.id, {
+            shouldValidate: true,
+            shouldDirty: true,
+            shouldTouch: true,
+          })
+        }
+      />
+
+      <ReceiptPreviewModal
+        open={!!receiptPreview}
+        receipt={receiptPreview}
+        onClose={closeReceiptPreview}
+      />
     </PageWrapper>
   );
 }
