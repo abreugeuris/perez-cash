@@ -24,8 +24,8 @@ const TABS = [
   { to: "/dashboard", icon: Home, label: "Inicio" },
   { to: "/remitentes", icon: Users, label: "Remitentes" },
   { to: "/beneficiarios", icon: UserCheck, label: "Beneficiarios" },
-  { to: "/envios", icon: History, label: "Envíos" },
   { to: "/tasas", icon: DollarSign, label: "Tasas" },
+  { to: "/envios/historial", icon: History, label: "Historial" },
 ];
 
 export default function Layout() {
