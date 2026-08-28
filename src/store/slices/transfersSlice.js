@@ -1,5 +1,5 @@
 import { createSlice } from "@reduxjs/toolkit";
-import { transfersController } from "../../backend/controllers/Transfers.controller.js";
+import { transfersController } from "@/backend/controllers/transfers.controller";
 import { createServiceThunk } from "@/utils/createServiceThunk";
 
 export const fetchTransfers = createServiceThunk(
@@ -19,6 +19,7 @@ export const fetchTransferReceipt = createServiceThunk(
 
 const initialState = {
   items: [],
+  totalCount: 0,
   status: "idle", // 'idle' | 'loading' | 'succeeded' | 'failed'
   error: null,
   saving: false,
@@ -51,7 +52,8 @@ const transfersSlice = createSlice({
       })
       .addCase(fetchTransfers.fulfilled, (state, action) => {
         state.status = "succeeded";
-        state.items = action.payload;
+        state.items = action.payload.items;
+        state.totalCount = action.payload.totalCount;
       })
       .addCase(fetchTransfers.rejected, (state, action) => {
         state.status = "failed";

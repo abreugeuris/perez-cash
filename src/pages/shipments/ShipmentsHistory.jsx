@@ -1,8 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import {
   FiltersBar,
   StyledSelect,
@@ -30,9 +28,7 @@ import {
   fetchTransfers,
   clearTransfersError,
 } from "@/store/slices/transfersSlice";
-
-import ReceiptPreviewModal from "@/components/modals/ReceiptPreviewModal.jsx";
-
+import ReceiptPreviewModal from "@/components/modals/ReceiptPreviewModal";
 import {
   PageWrapper,
   PageTitle,
@@ -54,6 +50,8 @@ import {
   Calendar,
   User,
   Users,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 const STATUS_TO_BADGE_KEY = {
@@ -69,6 +67,35 @@ const STATUS_LABELS = {
 };
 
 const MAX_RANGE_DAYS = 90; // debe coincidir con el límite del RPC get_transfers
+const PAGE_SIZE = 10;
+const SEARCH_DEBOUNCE_MS = 400;
+
+// Misma zona horaria que usa el RPC get_transfers para cortar el día
+// (AT TIME ZONE 'America/Santo_Domingo') — así la fecha que se ve en
+// esta tabla siempre coincide con el filtro, sin importar en qué
+// zona horaria tenga configurado su navegador quien esté usando la app.
+const BUSINESS_TIMEZONE = "America/Santo_Domingo";
+
+function formatTableDate(isoString) {
+  return new Intl.DateTimeFormat("es-DO", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: BUSINESS_TIMEZONE,
+  }).format(new Date(isoString));
+}
+
+function formatCardDate(isoString) {
+  return new Intl.DateTimeFormat("es-DO", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: BUSINESS_TIMEZONE,
+  }).format(new Date(isoString));
+}
 
 function toISODate(date) {
   return date.toISOString().slice(0, 10);
@@ -86,71 +113,73 @@ const DEFAULT_FROM_STR = addDays(TODAY_STR, -MAX_RANGE_DAYS);
 export default function ShipmentsHistory() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const { items: transfers, status, error } = useSelector((s) => s.transfers);
+  const {
+    items: transfers,
+    totalCount,
+    status,
+    error,
+  } = useSelector((s) => s.transfers);
 
   const [estadoFilter, setEstadoFilter] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(""); // valor tal cual escribe el usuario
+  const [debouncedSearch, setDebouncedSearch] = useState(""); // el que realmente se manda al RPC
   const [dateFrom, setDateFrom] = useState(DEFAULT_FROM_STR);
   const [dateTo, setDateTo] = useState(TODAY_STR);
   const [sortAsc, setSortAsc] = useState(false);
+  const [page, setPage] = useState(1);
   const [reprintTarget, setReprintTarget] = useState(null);
 
-  // El status y el rango de fechas ahora los filtra el RPC del lado
-  // del servidor — cualquier cambio en ellos dispara un nuevo fetch.
-  // (La búsqueda por nombre/referencia sigue siendo client-side sobre
-  // ese subconjunto ya filtrado, para no pegarle al RPC en cada tecla.)
+  // Espera 400ms sin que el usuario escriba antes de mandar la
+  // búsqueda al servidor — evita un RPC por cada tecla presionada.
   useEffect(() => {
+    const t = setTimeout(
+      () => setDebouncedSearch(searchTerm.trim()),
+      SEARCH_DEBOUNCE_MS,
+    );
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  // Límites nativos del <input type="date"> — el calendario no deja
+  // elegir un rango mayor a 3 meses.
+  const dateFromMin = dateTo ? addDays(dateTo, -MAX_RANGE_DAYS) : undefined;
+  const dateFromMax = dateTo || TODAY_STR;
+  const dateToMin = dateFrom || undefined;
+  const dateToMax = dateFrom
+    ? [addDays(dateFrom, MAX_RANGE_DAYS), TODAY_STR].sort()[0]
+    : TODAY_STR;
+
+  // Firma de los filtros que, al cambiar, deben resetear a página 1.
+  const filtersKey = `${estadoFilter}|${dateFrom}|${dateTo}|${debouncedSearch}|${sortAsc}`;
+  const prevFiltersKey = useRef(filtersKey);
+
+  useEffect(() => {
+    if (filtersKey !== prevFiltersKey.current) {
+      prevFiltersKey.current = filtersKey;
+      if (page !== 1) {
+        setPage(1);
+        return; // el cambio de página vuelve a disparar este efecto — se hace un solo fetch, no dos
+      }
+    }
+
     dispatch(
       fetchTransfers({
         status: estadoFilter || undefined,
         dateFrom,
         dateTo,
+        search: debouncedSearch || undefined,
+        sortDir: sortAsc ? "asc" : "desc",
+        page,
+        pageSize: PAGE_SIZE,
       }),
     );
+
     return () => dispatch(clearTransfersError());
-  }, [dispatch, estadoFilter, dateFrom, dateTo]);
-
-  // Límites nativos del <input type="date">: el navegador ya no deja
-  // que el usuario ABRA el calendario y elija un día fuera de rango,
-  // en vez de dejarlo elegir y corregirlo después.
-  //
-  // "Fecha desde" no puede quedar a más de 90 días ANTES de "Fecha hasta".
-  const dateFromMin = dateTo ? addDays(dateTo, -MAX_RANGE_DAYS) : undefined;
-  const dateFromMax = dateTo || TODAY_STR;
-
-  // "Fecha hasta" no puede ser ni anterior a "Fecha desde" ni quedar
-  // a más de 90 días DESPUÉS — ni tampoco superar hoy.
-  const dateToMin = dateFrom || undefined;
-  const dateToMax = dateFrom
-    ? [addDays(dateFrom, MAX_RANGE_DAYS), TODAY_STR].sort()[0] // el menor de los dos límites
-    : TODAY_STR;
-
-  const filteredEnvios = useMemo(() => {
-    let result = [...transfers];
-
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase().trim();
-      result = result.filter((e) => {
-        const remName = (e.sender_name ?? "").toLowerCase();
-        const benName = (e.beneficiary_name ?? "").toLowerCase();
-        const ref = (e.reference_number ?? "").toLowerCase();
-        return (
-          remName.includes(term) || benName.includes(term) || ref.includes(term)
-        );
-      });
-    }
-
-    result.sort((a, b) => {
-      const cmp =
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      return sortAsc ? -cmp : cmp;
-    });
-
-    return result;
-  }, [transfers, searchTerm, sortAsc]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, filtersKey, page]);
 
   const isLoading = status === "loading";
   const hasExtraFilters = searchTerm || estadoFilter;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   return (
     <PageWrapper>
@@ -163,9 +192,8 @@ export default function ShipmentsHistory() {
         <div>
           <PageTitle>Historial de Envíos</PageTitle>
           <PageSubtitle>
-            {filteredEnvios.length} envío
-            {filteredEnvios.length !== 1 ? "s" : ""} encontrado
-            {filteredEnvios.length !== 1 ? "s" : ""}
+            {totalCount} envío{totalCount !== 1 ? "s" : ""} encontrado
+            {totalCount !== 1 ? "s" : ""}
           </PageSubtitle>
         </div>
         <Button
@@ -265,7 +293,7 @@ export default function ShipmentsHistory() {
             <p>Cargando envíos…</p>
           </CardBody>
         </Card>
-      ) : filteredEnvios.length === 0 ? (
+      ) : transfers.length === 0 ? (
         <Card>
           <CardBody>
             <EmptyWrap>
@@ -310,7 +338,7 @@ export default function ShipmentsHistory() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredEnvios.map((envio) => (
+                      {transfers.map((envio) => (
                         <tr
                           key={envio.id}
                           onClick={() => navigate(`/envios/${envio.id}/recibo`)}
@@ -382,11 +410,7 @@ export default function ShipmentsHistory() {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {format(
-                              new Date(envio.created_at),
-                              "dd/MM/yy HH:mm",
-                              { locale: es },
-                            )}
+                            {formatTableDate(envio.created_at)}
                           </td>
                           <td
                             style={{
@@ -427,7 +451,7 @@ export default function ShipmentsHistory() {
 
           {/* ═══ MOBILE CARDS ═══ */}
           <MobileCards>
-            {filteredEnvios.map((envio) => (
+            {transfers.map((envio) => (
               <EnvioCard
                 key={envio.id}
                 onClick={() => navigate(`/envios/${envio.id}/recibo`)}
@@ -484,9 +508,7 @@ export default function ShipmentsHistory() {
                   <CardFooter>
                     <CardDate>
                       <Calendar size={12} />
-                      {format(new Date(envio.created_at), "d MMM, HH:mm", {
-                        locale: es,
-                      })}
+                      {formatCardDate(envio.created_at)}
                     </CardDate>
                     <Flex $gap="0.6rem" $align="center">
                       <Printer
@@ -507,6 +529,38 @@ export default function ShipmentsHistory() {
               </EnvioCard>
             ))}
           </MobileCards>
+
+          {/* ═══ PAGINACIÓN ═══ */}
+          <Flex
+            $justify="space-between"
+            $align="center"
+            $wrap
+            style={{ marginTop: "1rem" }}
+          >
+            <span
+              style={{ fontSize: "0.75rem", color: "var(--color-muted-fg)" }}
+            >
+              Página {page} de {totalPages} — {totalCount} en total
+            </span>
+            <Flex $gap="0.4rem">
+              <Button
+                $variant="outline"
+                $size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                <ChevronLeft size={14} /> Anterior
+              </Button>
+              <Button
+                $variant="outline"
+                $size="sm"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+              >
+                Siguiente <ChevronRight size={14} />
+              </Button>
+            </Flex>
+          </Flex>
         </>
       )}
 
